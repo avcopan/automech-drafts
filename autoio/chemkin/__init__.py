@@ -1,4 +1,6 @@
 """ CHEMKIN parsers
+
+TODO: Format the reactions and species output into pandas tables
 """
 
 import re
@@ -39,27 +41,23 @@ def rate_params_expr(
 
 
 # generic
+COMMENT_REGEX = re.compile(r"!.*$", flags=re.M)
 COMMENT = pp.Suppress(pp.Literal("!")) + ... + pp.Suppress(pp.LineEnd())
-COMMENTS = pp.delimitedList(COMMENT, delim=pp.LineEnd())
+COMMENTS = pp.ZeroOrMore(COMMENT)
 
 # units
-E_UNIT = (
+E_UNIT = pp.Opt(
     pp.CaselessKeyword("CAL/MOLE")
     ^ pp.CaselessKeyword("KCAL/MOLE")
     ^ pp.CaselessKeyword("JOULES/MOLE")
     ^ pp.CaselessKeyword("KJOULES/MOLE")
     ^ pp.CaselessKeyword("KELVINS")
 )
-A_UNIT = pp.CaselessKeyword("MOLES") ^ pp.CaselessKeyword("MOLECULES")
-REACTION_UNITS = pp.Opt(E_UNIT)("e_unit") + pp.Opt(A_UNIT)("a_unit")
+A_UNIT = pp.Opt(pp.CaselessKeyword("MOLES") ^ pp.CaselessKeyword("MOLECULES"))
 
 # species
 SPECIE = pp.Combine(
     pp.WordStart(pp.alphas) + pp.Word(pp.printables, exclude_chars="+=<>!")
-)
-SPECIES = pp.OneOrMore(SPECIE("species"))
-SPECIES_WITH_COMMENTS = pp.OneOrMore(
-    pp.Group(SPECIE("species") + pp.Opt(COMMENTS)("comments"))
 )
 
 # reactions
@@ -72,23 +70,23 @@ REAGENTS = pp.Group(
     pp.delimitedList(SPECIE, delim="+")("species") + pp.Opt(FALLOFF)("falloff")
 )
 REACTION = REAGENTS("reactants") + ARROW("arrow") + REAGENTS("products")
-RATE = (
-    number_list_expr(3)("arrh")
-    + pp.Opt(rate_params_expr("LOW", 3))("lind")
+RATE = number_list_expr(3)("arrh")
+PRESSURE_DEPENDENCE = (
+    pp.Opt(rate_params_expr("LOW", 3))("lind")
     + pp.Opt(rate_params_expr("TROE", 3, 4))("troe")
-    + pp.ZeroOrMore(rate_params_expr("PLOG", 4))("plog")
+    + pp.Opt(pp.OneOrMore(pp.Group(rate_params_expr("PLOG", 4))))("plog")
 )
-REACTION_ENTRY = pp.Group(REACTION)("reaction") + pp.Group(RATE)("rate")
+DUPLICATE = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))("dup")
 
 
 # reactions
-def reactions_block(mech_str: str) -> str:
+def reactions_block(mech_str: str, comments: bool = True) -> str:
     """Get the reactions block, starting with 'REACTIONS' and ending in 'END'
 
     :param mech_str: A CHEMKIN mechanism string
     :return: The block
     """
-    return block(mech_str, "REACTIONS")
+    return block(mech_str, "REACTIONS", comments=comments)
 
 
 def reaction_units(mech_str: str, default: bool = True) -> Tuple[str, str]:
@@ -101,22 +99,41 @@ def reaction_units(mech_str: str, default: bool = True) -> Tuple[str, str]:
     e_default = "CAL/MOL" if default else None
     a_default = "MOLES" if default else None
 
-    reac_str = reactions_block(mech_str)
-    unit_expr = REACTION_UNITS
-    unit_dct = unit_expr.parseString(reac_str).as_dict()
+    rxn_block_str = reactions_block(mech_str, comments=False)
+    parser = E_UNIT("e_unit") + A_UNIT("a_unit")
+    unit_dct = parser.parseString(rxn_block_str).as_dict()
     e_unit = unit_dct["e_unit"].upper() if "e_unit" in unit_dct else e_default
     a_unit = unit_dct["a_unit"].upper() if "a_unit" in unit_dct else a_default
     return e_unit, a_unit
 
 
+def reaction_rates(mech_str: str) -> List[str]:
+    """Get the reaction entries (reactions with kinetics and comments, if any)
+
+    Incomplete -- not yet returning reaction equations
+
+    :param mech_str: A CHEMKIN mechanism string
+    :return: The reaction entries
+    """
+    rxn_expr = REACTION("reaction") + RATE + PRESSURE_DEPENDENCE + DUPLICATE
+    parser = pp.Suppress(...) + pp.OneOrMore(pp.Group(rxn_expr))
+    rxn_block_str = reactions_block(mech_str, comments=False)
+    rxn_rates = []
+    for res in parser.parseString(rxn_block_str):
+        res_dct = res.asDict()
+        rxn = res_dct.pop("reaction")
+        rxn_rates.append((rxn, res_dct))
+    return rxn_rates
+
+
 # species
-def species_block(mech_str: str) -> str:
+def species_block(mech_str: str, comments: bool = True) -> str:
     """Get the species block, starting with 'SPECIES' and ending in 'END'
 
     :param mech_str: A CHEMKIN mechanism string
     :return: The block
     """
-    return block(mech_str, "SPECIES")
+    return block(mech_str, "SPECIES", comments=comments)
 
 
 def species(mech_str: str) -> List[str]:
@@ -125,8 +142,9 @@ def species(mech_str: str) -> List[str]:
     :param mech_str: A CHEMKIN mechanism string
     :return: The species
     """
-    spc_block_str = without_comments(species_block(mech_str))
-    return SPECIES.parseString(spc_block_str).asList()
+    parser = pp.OneOrMore(SPECIE)
+    spc_block_str = species_block(mech_str, comments=False)
+    return parser.parseString(spc_block_str).asList()
 
 
 def species_with_comments(mech_str: str) -> Dict[str, List[str]]:
@@ -135,9 +153,9 @@ def species_with_comments(mech_str: str) -> Dict[str, List[str]]:
     :param mech_str: A CHEMKIN mechanism string
     :return: A dictionary mapping species onto their comments
     """
-    spc_block_str = species_block(mech_str)
-    dct = SPECIES_WITH_COMMENTS("_").parseString(spc_block_str).asDict()
-    print(dct)
+    parser = pp.Suppress(...) + pp.OneOrMore(pp.Group(SPECIE + pp.Group(COMMENTS)))
+    spc_block_str = species_block(mech_str, comments=True)
+    return dict(parser.parseString(spc_block_str).asList())
 
 
 # therm
@@ -151,27 +169,37 @@ def therm_block(mech_str: str) -> str:
 
 
 # generic
-def block(mech_str: str, key: str) -> str:
+def block(mech_str: str, key: str, comments: bool = False) -> str:
     """Get a keyword block, starting with a key and ending in 'END'
 
     :param mech_str: The mechanism string
     :param key: The key that the block starts with
+    :param comments: Include comments?
     :return: The block
     """
     block_par = pp.Suppress(...) + pp.QuotedString(
         key, end_quote_char="END", multiline=True
     )
     (block_str,) = block_par.parseString(mech_str).asList()
+    # Remove comments, if requested
+    if not comments:
+        block_str = without_comments(block_str)
     return block_str
 
 
-COMMENT_REGEX = re.compile(r"!.*$", flags=re.M)
-
-
 def without_comments(mech_str: str) -> str:
-    """Get a CHEMKIN string with comments removed
+    """Get a CHEMKIN string or substring with comments removed
 
     :param mech_str: The mechanism string, or any substring of it
     :return: The string, without comments
     """
     return re.sub(COMMENT_REGEX, "", mech_str)
+
+
+def all_comments(mech_str: str) -> List[str]:
+    """Get all comments from a CHEMKIN string or substring
+
+    :param mech_str: The mechanism string, or any substring of it
+    :return: The comments
+    """
+    return re.findall(COMMENT_REGEX, mech_str)
