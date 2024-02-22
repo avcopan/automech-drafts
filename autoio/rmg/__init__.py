@@ -10,7 +10,7 @@ from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
 
 from autoio import schema
-from autoio.chemkin import SPECIE
+from autoio.chemkin._read import SPECIE
 
 MULTIPLICITY = pp.CaselessLiteral("multiplicity") + ppc.integer("mult")
 SPECIES_ENTRY = (
@@ -19,14 +19,13 @@ SPECIES_ENTRY = (
 SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 
-def species_dictionary(spc_dict_str) -> Dict[str, Any]:
+def species_dictionary(rmg_spc_str) -> Dict[str, Any]:
     """Parse a species dictionary string
 
-    :param spc_dict_str: A species dictionary string, consisting of alternating CHEMKIN
-        names and adjacency lists
+    :param rmg_spc_str: An RMG species dictionary string
     :return: A dictionary mapping CHEMKIN names onto automol graphs
     """
-    spc_par_rets = SPECIES_DICT.parseString(spc_dict_str).asDict()["dict"]
+    spc_par_rets = SPECIES_DICT.parseString(rmg_spc_str).asDict()["dict"]
     names = []
     mults = []
     smis = []
@@ -37,15 +36,15 @@ def species_dictionary(spc_dict_str) -> Dict[str, Any]:
 
         names.append(spc_par_ret["species"])
         mults.append(spc_par_ret.get("mult", 1))
-        smis.append(automol.graph.smiles(gra))
         chis.append(automol.graph.inchi(gra))
+        smis.append(automol.graph.smiles(gra))
 
     spc_df = pandas.DataFrame(
         {
             schema.Species.name: names,
             schema.Species.mult: mults,
-            schema.Species.smi: smis,
             schema.Species.chi: chis,
+            schema.Species.smi: smis,
         }
     )
-    return schema.validate(schema.Species, spc_df)
+    return schema.validate_species(spc_df, smi=True)
