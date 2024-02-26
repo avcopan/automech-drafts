@@ -9,8 +9,8 @@ import pyparsing as pp
 from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
 
-from autoio import schema
-from autoio.chemkin._read import SPECIE
+from mecha import schema
+from mecha.chemkin.read import SPECIE
 
 MULTIPLICITY = pp.CaselessLiteral("multiplicity") + ppc.integer("mult")
 SPECIES_ENTRY = (

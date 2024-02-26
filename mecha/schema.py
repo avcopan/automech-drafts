@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 
 import automol
 import pandas
@@ -15,6 +15,17 @@ class Species(pa.DataFrameModel):
     orig_name: Optional[Series[str]]
     orig_chi: Optional[Series[str]]
     orig_smi: Optional[Series[str]]
+
+
+class Reactions(pa.DataFrameModel):
+    reactants: Series[Tuple[str, ...]] = pa.Field(coerce=True)
+    products: Series[Tuple[str, ...]] = pa.Field(coerce=True)
+    # Singular column names
+    rate: Optional[Series[object]]
+    step: Optional[Series[object]]
+    # Plural (grouped) column names
+    rates: Optional[Series[Tuple[object, ...]]]
+    steps: Optional[Series[Tuple[object, ...]]]
 
 
 def validate_species(df: pandas.DataFrame, smi: bool = False) -> pandas.DataFrame:
@@ -35,6 +46,21 @@ def validate_species(df: pandas.DataFrame, smi: bool = False) -> pandas.DataFram
         df[Species.smi] = df[Species.chi].map(automol.amchi.smiles)
 
     return validate(Species, df)
+
+
+def validate_reactions(df: pandas.DataFrame) -> pandas.DataFrame:
+    """Validate a reactions data frame
+
+    :param df: The dataframe
+    :return: The validated dataframe
+    """
+    if Reactions.rate in df or Reactions.step in df:
+        assert Reactions.rates not in df and Reactions.steps not in df
+
+    if Reactions.rates in df or Reactions.steps in df:
+        assert Reactions.rate not in df and Reactions.step not in df
+
+    return validate(Reactions, df)
 
 
 def validate(model: pa.DataFrameModel, df: pandas.DataFrame) -> pandas.DataFrame:
