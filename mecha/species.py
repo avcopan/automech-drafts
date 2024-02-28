@@ -3,8 +3,12 @@
 
 import automol
 import pandas
+from tqdm.auto import tqdm
 
 from mecha import chemkin, schema
+from mecha.schema import Species
+
+tqdm.pandas()
 
 
 def expand_stereo(spc_df: pandas.DataFrame, enant: bool = True) -> pandas.DataFrame:
@@ -15,23 +19,30 @@ def expand_stereo(spc_df: pandas.DataFrame, enant: bool = True) -> pandas.DataFr
     :return: The stereo-expanded species dataframe
     """
 
-    def expand_amchi(chi):
+    def expand_amchi_(chi):
         return automol.amchi.expand_stereo(chi, enant=enant)
 
-    def update_name(row):
-        orig_name = row[schema.Species.orig_name]
-        chi = row[schema.Species.chi]
-        return chemkin.name.with_stereo_suffix(orig_name, chi, racem=not enant)
+    def name_(row):
+        name = row[Species.orig_name]
+        chi = row[Species.chi]
+        return chemkin.name.with_stereo_suffix(name, chi, racem=not enant)
 
     spc_df = schema.validate_species(spc_df)
-    spc_df = spc_df.rename(
-        columns={
-            schema.Species.name: schema.Species.orig_name,
-            schema.Species.chi: schema.Species.orig_chi,
-            schema.Species.smi: schema.Species.orig_smi,
-        }
-    )
-    spc_df[schema.Species.chi] = spc_df[schema.Species.orig_chi].apply(expand_amchi)
-    spc_df = spc_df.explode(schema.Species.chi)
-    spc_df[schema.Species.name] = spc_df.apply(update_name, axis=1)
+    spc_df = rename_with_original_columns(spc_df)
+    spc_df[Species.chi] = spc_df[Species.orig_chi].progress_apply(expand_amchi_)
+    spc_df = spc_df.explode(Species.chi)
+    spc_df[Species.name] = spc_df.apply(name_, axis=1)
     return schema.validate_species(spc_df)
+
+
+# Helpers
+def rename_with_original_columns(spc_df: pandas.DataFrame) -> pandas.DataFrame:
+    """Rename the species dataframe with original column names
+    (orig_name, orig_chi, orig_smi)
+
+    Used when expanding stereo
+
+    :param spc_df: The species dataframe
+    :return: The species dataframe
+    """
+    return spc_df.rename(columns=dict(zip(schema.S_CURR_COLS, schema.S_ORIG_COLS)))

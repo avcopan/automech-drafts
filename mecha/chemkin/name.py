@@ -35,7 +35,7 @@ def with_stereo_suffix(name: str, chi: str, racem: bool = False):
     bpars = list(map(bpar_dct.get, sorted(bpar_dct)))
     apars = list(map(apar_dct.get, sorted(apar_dct)))
     bsuff = "".join("e" if p else "z" for p in bpars)
-    asuff = "".join("s" if p else "r" for p in apars) if len(apars) > 1 else ""
+    asuff = "".join("s" if p else "r" for p in apars)
     isuff = ""
     if is_enant:
         isuff = "R" if racem else ("1" if is_inv else "0")

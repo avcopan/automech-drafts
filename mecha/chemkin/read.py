@@ -27,17 +27,10 @@ E_UNIT = pp.Opt(
 )
 A_UNIT = pp.Opt(pp.CaselessKeyword("MOLES") ^ pp.CaselessKeyword("MOLECULES"))
 
-# species
-SPECIE = pp.Combine(
-    pp.WordStart(pp.alphas) + pp.Word(pp.printables, exclude_chars="+=<>!")
-)
-
 # reactions
-ARROW = pp.Literal("=") ^ pp.Literal("=>") ^ pp.Literal("<=>")
-FALLOFF = pp.Combine(
-    pp.Literal("(") + pp.Literal("+") + pp.Literal("M") + pp.Literal(")"),
-    adjacent=False,
-)
+SPECIE = data.reac.SPECIE
+ARROW = data.reac.ARROW
+FALLOFF = data.reac.FALLOFF
 DUP = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))
 
 
@@ -92,9 +85,8 @@ def reaction_kinetics(mech_str: str) -> List[str]:
 
     # Do the parsing
     rxn_block_str = reactions_block(mech_str, comments=False)
-    rcts_lst = []
-    prds_lst = []
-    rate_lst = []
+    names = []
+    rates = []
     for res in parser.parseString(rxn_block_str):
         dct = res.asDict()
         rxn = data.reac.from_chemkin(
@@ -107,16 +99,11 @@ def reaction_kinetics(mech_str: str) -> List[str]:
             troe=dct.get("arrh0", None),
         )
 
-        rcts_lst.append(data.reac.reactants(rxn))
-        prds_lst.append(data.reac.products(rxn))
-        rate_lst.append(data.reac.rate(rxn))
+        names.append(data.reac.equation(rxn))
+        rates.append(data.reac.rate(rxn))
 
     rxn_df = pandas.DataFrame(
-        {
-            schema.Reactions.reactants: rcts_lst,
-            schema.Reactions.products: prds_lst,
-            schema.Reactions.rate: rate_lst,
-        }
+        {schema.Reactions.eq: names, schema.Reactions.rate: rates}
     )
 
     return schema.validate_reactions(rxn_df)

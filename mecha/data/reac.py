@@ -2,7 +2,9 @@
 """
 
 import dataclasses
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
+
+import pyparsing as pp
 
 from mecha.data import rate as rate_
 
@@ -18,15 +20,15 @@ class Reaction:
     :param rates: The reaction rates
     """
 
-    reactants: Tuple[str]
-    products: Tuple[str]
-    rates: Tuple[rate_.Rate] = ()
+    reactants: Tuple[str, ...]
+    products: Tuple[str, ...]
+    rates: Tuple[rate_.Rate, ...] = ()
 
 
 # constructors
 def from_chemkin(
-    rcts: Tuple[str],
-    prds: Tuple[str],
+    rcts: Tuple[str, ...],
+    prds: Tuple[str, ...],
     arrow: str = "=",
     plus_m: str = "",
     arrh: Optional[rate_.Params3] = None,
@@ -68,7 +70,7 @@ def from_chemkin(
 
 
 # getters
-def reactants(rxn: Reaction) -> Tuple[str]:
+def reactants(rxn: Reaction) -> Tuple[str, ...]:
     """The list of reactants
 
     :param rxn: A reaction object
@@ -77,7 +79,7 @@ def reactants(rxn: Reaction) -> Tuple[str]:
     return rxn.reactants
 
 
-def products(rxn: Reaction) -> Tuple[str]:
+def products(rxn: Reaction) -> Tuple[str, ...]:
     """The list of products
 
     :param rxn: A reaction object
@@ -86,7 +88,7 @@ def products(rxn: Reaction) -> Tuple[str]:
     return rxn.products
 
 
-def rates(rxn: Reaction) -> Tuple[rate_.Rate]:
+def rates(rxn: Reaction) -> Tuple[rate_.Rate, ...]:
     """The rate constants
 
     :param rxn: A reaction object
@@ -106,8 +108,87 @@ def rate(rxn: Reaction) -> Tuple[rate_.Rate]:
 
 # properties
 def equation(rxn: Reaction) -> str:
-    """Get the chemical equation for a reaction, as a CHEMKIN string
+    """Get the CHEMKIN equation of a reaction
 
     :param rxn: A reaction object
-    :return: The chemical equation
+    :return: The reaction CHEMKIN equation
     """
+    return form_equation(reactants(rxn), products(rxn))
+
+
+# helpers
+SPECIE = pp.Combine(
+    pp.WordStart(pp.alphas) + pp.Word(pp.printables, exclude_chars="+=<>!")
+)
+ARROW = pp.Literal("=") ^ pp.Literal("=>") ^ pp.Literal("<=>")
+FALLOFF = pp.Combine(
+    pp.Literal("(") + pp.Literal("+") + pp.Literal("M") + pp.Literal(")"),
+    adjacent=False,
+)
+
+
+def parse_equation(
+    eq: str, trans_dct: Optional[Dict[str, str]] = None
+) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """Parse the CHEMKIN equation of a reaction into reactants and products
+
+    :param eq: The reaction CHEMKIN equation
+    :return: The reactants and products
+    """
+
+    def trans_(name):
+        return name if trans_dct is None else trans_dct.get(name)
+
+    r_expr = pp.Group(
+        pp.delimitedList(SPECIE, delim="+")("species") + pp.Opt(FALLOFF)("falloff")
+    )
+    parser = r_expr("reactants") + ARROW("arrow") + r_expr("products")
+    dct = parser.parseString(eq).asDict()
+    rcts = tuple(map(trans_, dct["reactants"]["species"]))
+    prds = tuple(map(trans_, dct["products"]["species"]))
+    return (rcts, prds)
+
+
+def equation_reactants(eq: str) -> Tuple[str, ...]:
+    """Get the reactants of a CHEMKIN equation
+
+    :param eq: The reaction CHEMKIN equation
+    :return: The reactants
+    """
+    rcts, _ = parse_equation(eq)
+    return rcts
+
+
+def equation_products(eq: str) -> Tuple[str, ...]:
+    """Get the products of a CHEMKIN equation
+
+    :param eq: The reaction CHEMKIN equation
+    :return: The products
+    """
+    _, prds = parse_equation(eq)
+    return prds
+
+
+def equation_reagents(eq: str, prod: bool = False) -> Tuple[str, ...]:
+    """Get the reagents (reactants or products) of a CHEMKIN equation
+
+    :param eq: The reaction CHEMKIN equation
+    :param prod: Get the products, instead of the reactants?, defaults to False
+    :return: The reagents
+    """
+    return equation_products(eq) if prod else equation_reactants(eq)
+
+
+def form_equation(rcts: Tuple[str, ...], prds: Tuple[str, ...]) -> str:
+    """Form the CHEMKIN equation of a reaction from reactants and products
+
+    :param rcts: The reactant names
+    :param prds: The product names
+    :return: The reaction CHEMKIN equation
+    """
+    assert all(isinstance(n, str) for n in rcts), f"Invalid reactants: {rcts}"
+    assert all(isinstance(n, str) for n in prds), f"Invalid products: {prds}"
+
+    rcts_str = " + ".join(rcts)
+    prds_str = " + ".join(prds)
+    return " = ".join([rcts_str, prds_str])

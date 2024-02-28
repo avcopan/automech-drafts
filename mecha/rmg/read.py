@@ -8,6 +8,7 @@ import pandas
 import pyparsing as pp
 from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
+from tqdm.auto import tqdm
 
 from mecha import schema
 from mecha.chemkin.read import SPECIE
@@ -30,7 +31,7 @@ def species_dictionary(rmg_spc_str) -> Dict[str, Any]:
     mults = []
     smis = []
     chis = []
-    for spc_par_ret in spc_par_rets:
+    for spc_par_ret in tqdm(spc_par_rets):
         adj_par_ret = spc_par_ret["adj_list"]
         gra = automol.graph.from_parsed_rmg_adjacency_list(adj_par_ret)
 

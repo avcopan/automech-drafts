@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import List, Optional
 
 import automol
 import pandas
@@ -12,20 +12,28 @@ class Species(pa.DataFrameModel):
     charge: Series[int] = pa.Field(coerce=True, default=0)
     chi: Series[str]
     smi: Optional[Series[str]]
+    # Original column names (before stereoexpansion)
     orig_name: Optional[Series[str]]
     orig_chi: Optional[Series[str]]
     orig_smi: Optional[Series[str]]
 
 
+S_CURR_COLS = (Species.name, Species.chi, Species.smi)
+S_ORIG_COLS = (Species.orig_name, Species.orig_chi, Species.orig_smi)
+
+
 class Reactions(pa.DataFrameModel):
-    reactants: Series[Tuple[str, ...]] = pa.Field(coerce=True)
-    products: Series[Tuple[str, ...]] = pa.Field(coerce=True)
-    # Singular column names
+    eq: Series[str] = pa.Field(coerce=True)
     rate: Optional[Series[object]]
-    step: Optional[Series[object]]
-    # Plural (grouped) column names
-    rates: Optional[Series[Tuple[object, ...]]]
-    steps: Optional[Series[Tuple[object, ...]]]
+    chi: Optional[Series[str]]
+    obj: Optional[Series[object]]
+    orig_eq: Optional[Series[str]]
+    orig_chi: Optional[Series[str]]
+
+
+R_CURR_COLS = (Reactions.eq, Reactions.chi)
+R_ORIG_COLS = (Reactions.orig_eq, Reactions.orig_chi)
+DUP_DIFF_COLS = (Reactions.rate, Reactions.chi, Reactions.obj)
 
 
 def validate_species(df: pandas.DataFrame, smi: bool = False) -> pandas.DataFrame:
@@ -54,12 +62,6 @@ def validate_reactions(df: pandas.DataFrame) -> pandas.DataFrame:
     :param df: The dataframe
     :return: The validated dataframe
     """
-    if Reactions.rate in df or Reactions.step in df:
-        assert Reactions.rates not in df and Reactions.steps not in df
-
-    if Reactions.rates in df or Reactions.steps in df:
-        assert Reactions.rate not in df and Reactions.step not in df
-
     return validate(Reactions, df)
 
 
