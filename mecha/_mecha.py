@@ -92,12 +92,13 @@ def expand_stereo(
     name_dct = df_.lookup_dict(spc_df, [Species.orig_name, Species.chi], Species.name)
 
     def eq_(row):
-        rname0s, pname0s = data.reac.parse_equation(row[Reactions.orig_eq])
+        eq0 = row[Reactions.orig_eq]
+        rname0s, pname0s = data.reac.parse_equation(eq0)
         rchis, pchis = automol.reac.amchis(row[Reactions.obj])
         rnames = tuple(map(name_dct.get, zip(rname0s, rchis)))
         pnames = tuple(map(name_dct.get, zip(pname0s, pchis)))
         # Make sure we print the ChIs if something went wrong
-        assert all(isinstance(n, str) for n in rnames + pnames), f"{rchis} = {pchis}"
+        assert all(isinstance(n, str) for n in rnames + pnames), f"{eq0}"
         return data.reac.form_equation(rnames, pnames)
 
     rxn_df[Reactions.eq] = rxn_df.progress_apply(eq_, axis=1)
