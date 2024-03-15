@@ -133,6 +133,7 @@ def parse_equation(
     """Parse the CHEMKIN equation of a reaction into reactants and products
 
     :param eq: The reaction CHEMKIN equation
+    :param trans_dct: Optionally, translate the species names using a dictionary
     :return: The reactants and products
     """
 
@@ -179,16 +180,28 @@ def equation_reagents(eq: str, prod: bool = False) -> Tuple[str, ...]:
     return equation_products(eq) if prod else equation_reactants(eq)
 
 
-def form_equation(rcts: Tuple[str, ...], prds: Tuple[str, ...]) -> str:
+def form_equation(
+    rcts: Tuple[str, ...],
+    prds: Tuple[str, ...],
+    trans_dct: Optional[Dict[str, str]] = None,
+) -> str:
     """Form the CHEMKIN equation of a reaction from reactants and products
 
     :param rcts: The reactant names
     :param prds: The product names
+    :param trans_dct: Optionally, translate the species names using a dictionary
     :return: The reaction CHEMKIN equation
     """
-    assert all(isinstance(n, str) for n in rcts), f"Invalid reactants: {rcts}"
-    assert all(isinstance(n, str) for n in prds), f"Invalid products: {prds}"
 
-    rcts_str = " + ".join(rcts)
-    prds_str = " + ".join(prds)
-    return " = ".join([rcts_str, prds_str])
+    def trans_(name):
+        return name if trans_dct is None else trans_dct.get(name)
+
+    rcts0, prds0 = rcts, prds
+    rcts = tuple(map(trans_, rcts0))
+    prds = tuple(map(trans_, prds0))
+
+    if not all(isinstance(n, str) for n in rcts + prds):
+        print(f"Some species in {rcts0}={prds0} have no translation:\n{trans_dct}")
+        return None
+
+    return " = ".join([" + ".join(rcts), " + ".join(prds)])

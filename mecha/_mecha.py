@@ -1,6 +1,8 @@
 """Primary mechanism processing routines
 """
 
+from typing import Tuple
+
 import automol
 import pandas
 from tqdm.auto import tqdm
@@ -10,6 +12,42 @@ from mecha.schema import Reactions, Species
 from mecha.util import df_
 
 tqdm.pandas()
+
+
+def display_reactions(
+    rxn_df: pandas.DataFrame,
+    spc_df: pandas.DataFrame,
+    keys: Tuple[str, ...] = (Reactions.eq,),
+    stereo: bool = True,
+):
+    """Display the reactions in a mechanism
+
+    :param rxn_df: The reactions dataframe
+    :param spc_df: The species dataframe
+    :param keys: Keys of extra columns to print
+    :param stereo: Display with stereochemistry?
+    """
+    rxn_df = schema.validate_reactions(rxn_df)
+    spc_df = schema.validate_species(spc_df)
+
+    # Do the classification with a progress bar, since it may take a while
+    chi_dct = df_.lookup_dict(spc_df, Species.name, Species.chi)
+
+    def display_(row):
+        # Print the requested information
+        for key in keys:
+            val = row[key] if key in row else "No such column"
+            print(f"{key}: {val}")
+
+        # Display the reaction
+        eq = row[Reactions.eq]
+        rchis, pchis = data.reac.parse_equation(eq, trans_dct=chi_dct)
+        if not all(isinstance(n, str) for n in rchis + pchis):
+            print(f"Some ChIs missing from species table: {rchis} = {pchis}")
+        else:
+            automol.amchi.display_reaction(rchis, pchis, stereo=stereo)
+
+    rxn_df.apply(display_, axis=1)
 
 
 def classify_reactions(
@@ -37,7 +75,7 @@ def classify_reactions(
     rxn_df[Reactions.obj] = rxn_df[Reactions.eq].progress_apply(objs_)
 
     # Separate out the unclassified reactions
-    unc_rxn_df = rxn_df[rxn_df[Reactions.obj].isna()].drop(columns=[Reactions.obj])
+    err_df = rxn_df[rxn_df[Reactions.obj].isna()].drop(columns=[Reactions.obj])
     rxn_df = rxn_df[rxn_df[Reactions.obj].notna()].drop(columns=[Reactions.rate])
 
     # Expand reactions with multiple possible mechanisms
@@ -48,9 +86,9 @@ def classify_reactions(
     rxn_df[Reactions.chi] = rxn_df[Reactions.obj].progress_apply(amchi_)
 
     # Expand duplicates among the unclassified reactions again
-    unc_rxn_df = expand_duplicates(unc_rxn_df)
+    err_df = expand_duplicates(err_df)
 
-    return schema.validate_reactions(rxn_df), schema.validate_reactions(unc_rxn_df)
+    return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
 
 
 def expand_stereo(
@@ -86,24 +124,36 @@ def expand_stereo(
         return automol.reac.expand_stereo(obj, enant=enant)
 
     rxn_df[Reactions.obj] = rxn_df[Reactions.obj].progress_apply(objs_)
-    rxn_df = rxn_df.explode(Reactions.obj)
 
-    # Get stereo-resolved reaction equations
+    # Get stereo-resolved reaction equations (initially as lists)
     name_dct = df_.lookup_dict(spc_df, [Species.orig_name, Species.chi], Species.name)
 
     def eq_(row):
         eq0 = row[Reactions.orig_eq]
-        rname0s, pname0s = data.reac.parse_equation(eq0)
-        rchis, pchis = automol.reac.amchis(row[Reactions.obj])
-        rnames = tuple(map(name_dct.get, zip(rname0s, rchis)))
-        pnames = tuple(map(name_dct.get, zip(pname0s, pchis)))
-        # Make sure we print the ChIs if something went wrong
-        assert all(isinstance(n, str) for n in rnames + pnames), f"{eq0}"
-        return data.reac.form_equation(rnames, pnames)
+        objs = row[Reactions.obj]
+        eqs = []
+        for obj in objs:
+            rname0s, pname0s = data.reac.parse_equation(eq0)
+            rchis, pchis = automol.reac.amchis(obj)
+            rnames = tuple(map(name_dct.get, zip(rname0s, rchis)))
+            pnames = tuple(map(name_dct.get, zip(pname0s, pchis)))
+            if not all(isinstance(n, str) for n in rnames + pnames):
+                return pandas.NA
+            eqs.append(data.reac.form_equation(rnames, pnames))
+        return tuple(eqs)
 
     rxn_df[Reactions.eq] = rxn_df.progress_apply(eq_, axis=1)
 
-    return schema.validate_reactions(rxn_df)
+    # Separate out the reactions that had errors
+    err_df = rxn_df[rxn_df[Reactions.eq].isna()]
+    rxn_df = rxn_df[rxn_df[Reactions.eq].notna()]
+
+    err_df = err_df.drop(columns=[Reactions.eq]).rename(
+        columns={Reactions.orig_eq: Reactions.eq}
+    )
+    rxn_df = rxn_df.explode([Reactions.eq, Reactions.obj])
+
+    return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
 
 
 # Helpers
