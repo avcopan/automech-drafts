@@ -6,7 +6,7 @@ Eventually, we will want to add a "Raw" rate type with k(T,P) values stored in a
 import abc
 import dataclasses
 import enum
-from typing import Optional, Tuple, Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 Params3 = Tuple[float, float, float]
 Params4 = Tuple[float, float, float, float]
@@ -48,6 +48,16 @@ class ArrheniusFunction:
     C: float = 0.0
 
 
+def arrhenius_params(k: ArrheniusFunction, lt: bool = True) -> Tuple[float, ...]:
+    """Get the parameters for an Arrhenius or Landau-Teller function
+
+    :param k: The Arrhenius function object
+    :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
+    :return: The parameters A, b, E, (B*, C*)
+    """
+    return (k.A, k.b, k.E, k.B, k.C) if lt else (k.A, k.b, k.E)
+
+
 @dataclasses.dataclass
 class BlendingFunction:
     """A blending function for high and low-pressure rates (see cantera.Falloff)
@@ -67,6 +77,24 @@ class BlendingFunction:
         self.type_ = BlendType(self.type_)
 
 
+def f_coeffs(f: BlendingFunction) -> BlendType:
+    """Get the coefficients of a blending function
+
+    :param f: The blending function object
+    :return: The blend function coefficients
+    """
+    return f.coeffs
+
+
+def f_type(f: BlendingFunction) -> BlendType:
+    """Get the blend type of a blending function
+
+    :param f: The blending function object
+    :return: The blend type
+    """
+    return f.type_
+
+
 class Rate(abc.ABC):
     """Base class for reaction rates"""
 
@@ -79,6 +107,24 @@ class Rate(abc.ABC):
     @abc.abstractproperty
     def is_rev(self):
         pass
+
+
+def type_(rate: Rate) -> RateType:
+    """The type of reaction
+
+    :param rate: The rate object
+    :return: The type of reaction
+    """
+    return rate.type_
+
+
+def is_reversible(rate: Rate) -> bool:
+    """Does this rate describe a reversible reaction?
+
+    :param rate: The rate object
+    :return: `True` if it does, `False` if it doesn't
+    """
+    return rate.is_rev
 
 
 @dataclasses.dataclass
@@ -94,8 +140,8 @@ class SimpleRate(Rate):
                     - k0: The low-pressure rate coefficient (M-independent)
                     - f: The blending function, F(T, P_r)
 
-    :param k: Rate coefficient (or high-pressure limit) for the reaction
-    :param k0: Rate coefficient for the low-pressure limit
+    :param k: The (high-pressure limiting) Arrhenius function for the reaction
+    :param k0: The low-pressure limiting Arrhenius function for the reaction
     :param f: Falloff function for blending the high- and low-pressure rate coefficients
     :param is_rev: Is this a reversible reaction?
     :param type_: The type of reaction: "Constant", "Falloff", "Activated"
@@ -113,6 +159,71 @@ class SimpleRate(Rate):
 
         if self.type_ != RateType.CONSTANT:
             self.f = BlendingFunction() if self.f is None else self.f
+
+
+def arrhenius_function(rate: SimpleRate) -> ArrheniusFunction:
+    """Get the (high-pressure limiting) Arrhenius function for the reaction
+
+    :param rate: The rate object
+    :return: The Arrhenius function
+    """
+    return rate.k
+
+
+def params(rate: SimpleRate, lt: bool = True) -> Tuple[float, ...]:
+    """Get the (high-pressure limiting) Arrhenius parameters for the reaction
+
+    :param rate: The rate object
+    :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
+    :return: The Arrhenius parameters A, b, E, (B*, C*)
+    """
+    return arrhenius_params(arrhenius_function(rate), lt=lt)
+
+
+def low_p_arrhenius_function(rate: SimpleRate) -> ArrheniusFunction:
+    """Get the low-pressure limiting Arrhenius function for the reaction
+
+    :param rate: The rate object
+    :return: The Arrhenius function
+    """
+    return rate.k0
+
+
+def low_p_params(rate: SimpleRate, lt: bool = True) -> Tuple[float, ...]:
+    """Get the low-pressure limiting Arrhenius parameters for the reaction
+
+    :param rate: The rate object
+    :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
+    :return: The Arrhenius parameters A, b, E, (B*, C*)
+    """
+    return arrhenius_params(low_p_arrhenius_function(rate), lt=lt)
+
+
+def blend_function(rate: SimpleRate) -> BlendingFunction:
+    """Get the function for blending high- and low-pressure rates
+
+    :param rate: The rate object
+    :return: The blend function
+    """
+    return rate.f
+
+
+def blend_type(rate: SimpleRate) -> BlendType:
+    """Get the function type for blending high- and low-pressure rates
+
+    :param rate: The rate object
+    :return: The blend type
+    """
+    return f_type(blend_function(rate))
+
+
+def blend_coeffs(rate: SimpleRate) -> BlendType:
+    """Get the coefficients for blending high- and low-pressure rates
+
+    :param rate: The rate object
+    :return: The blend coefficients
+    """
+    return f_coeffs(blend_function(rate))
 
 
 @dataclasses.dataclass
@@ -134,6 +245,65 @@ class PlogRate(Rate):
     def __post_init__(self):
         self.type_ = RateType(self.type_)
         assert self.type_ == RateType.PLOG
+
+
+def plog_arrhenius_functions(rate: PlogRate) -> Tuple[ArrheniusFunction, ...]:
+    """Arrhenius functions for a P-Log reaction rate
+
+    :param rate: The rate object
+    :return: The Arrhenius functions
+    """
+    return rate.ks
+
+
+def plog_params(rate: PlogRate, lt: bool = True) -> Tuple[ArrheniusFunction, ...]:
+    """Arrhenius functions for a P-Log reaction rate
+
+    :param rate: The rate object
+    :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
+    :return: The Arrhenius parameters A, b, E, (B*, C*)
+    """
+    return tuple(arrhenius_params(k, lt=lt) for k in plog_arrhenius_functions(rate))
+
+
+def plog_pressures(rate: PlogRate) -> Tuple[float, ...]:
+    """Pressures for a P-Log reaction rate
+
+    :param rate: The rate object
+    :return: The pressures
+    """
+    return rate.Ps
+
+
+def plog_params_dict(rate: PlogRate, lt: bool = True) -> Dict[float, ArrheniusFunction]:
+    """The P-Log Arrhenius parameters, as a dictionary by presure
+
+    :param rate: The rate object
+    :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
+    :return: The Arrhenius parameters A, b, E, (B*, C*)
+    """
+    return dict(zip(plog_pressures(rate), plog_params(rate, lt=lt)))
+
+
+def high_p_arrhenius_function(rate: Union[SimpleRate, PlogRate]) -> ArrheniusFunction:
+    """Get the high-pressure limiting Arrhenius function for the reaction
+
+    :param rate: The rate object
+    :return: The Arrhenius function
+    """
+    return rate.k
+
+
+def high_p_params(
+    rate: Union[SimpleRate, PlogRate], lt: bool = True
+) -> Tuple[float, ...]:
+    """Get the high-pressure limiting Arrhenius function for the reaction
+
+    :param rate: The rate object
+    :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
+    :return: The Arrhenius parameters A, b, E, (B*, C*)
+    """
+    return arrhenius_params(high_p_arrhenius_function(rate), lt=lt)
 
 
 def from_chemkin(
@@ -187,14 +357,46 @@ def from_chemkin(
     return SimpleRate(k=k, k0=k0, f=f, is_rev=is_rev, type_=type_)
 
 
+def to_old_object(rate: Rate) -> Any:
+    """Convert a new rate object to an old one
+
+    :param rate: The rate object
+    :return: The old rate object
+    """
+    from autoreact.params import RxnParams
+
+    rxn_params_obj = None
+    if type_(rate) == RateType.CONSTANT:
+        rxn_params_obj = RxnParams(arr_dct={"arr_tuples": [params(rate, lt=False)]})
+    elif type_(rate) == RateType.FALLOFF and blend_type(rate) == BlendType.LIND:
+        rxn_params_obj = RxnParams(
+            lind_dct={
+                "highp_arr": [high_p_params(rate, lt=False)],
+                "lowp_arr": [low_p_params(rate, lt=False)],
+            }
+        )
+    elif type_(rate) == RateType.FALLOFF and blend_type(rate) == BlendType.TROE:
+        rxn_params_obj = RxnParams(
+            troe_dct={
+                "highp_arr": [high_p_params(rate, lt=False)],
+                "lowp_arr": [low_p_params(rate, lt=False)],
+                "troe_params": blend_coeffs(rate),
+            }
+        )
+    elif type_(rate) == RateType.PLOG:
+        rxn_params_obj = RxnParams(plog_dct=plog_params_dict(rate, lt=False))
+
+    return rxn_params_obj
+
+
 @dataclasses.dataclass
 class ChebRate(Rate):
     """Chebyshev reaction rate, k(T,P) parametrization (see cantera.ReactionRate)
 
     :param T0: The minimum temperature [K] for the Chebyshev fit
-    :param T_: The minimum temperature [K] for the Chebyshev fit
+    :param T_: The maximum temperature [K] for the Chebyshev fit
     :param P0: The minimum pressure [K] for the Chebyshev fit
-    :param P_: The minimum pressure [K] for the Chebyshev fit
+    :param P_: The maximum pressure [K] for the Chebyshev fit
     :param coeffs: The Chebyshev expansion coefficients
     :param is_rev: Is this a reversible reaction?
     """

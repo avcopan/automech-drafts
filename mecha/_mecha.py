@@ -156,6 +156,19 @@ def expand_stereo(
     return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
 
 
+def to_old_dicts(
+    rxn_df: pandas.DataFrame, spc_df: pandas.DataFrame, drop: bool = False
+) -> Tuple[dict, dict]:
+    """Get old reaction and species dictionaries for a mechanism
+
+    :param rxn_df: The reactions dataframe
+    :param spc_df: The species dataframe
+    :param drop: Drop species which have no reactions?, defaults to False
+    :return: The old reaction and species dictionaries
+    """
+    pass
+
+
 # Helpers
 def combine_duplicates(
     rxn_df: pandas.DataFrame, first: bool = False
