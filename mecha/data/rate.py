@@ -96,26 +96,21 @@ def f_type(f: BlendingFunction) -> BlendType:
 
 
 class Rate(abc.ABC):
-    """Base class for reaction rates"""
+    """Base class for reaction rates
 
-    @property
-    @abc.abstractproperty
-    def type_(self):
-        pass
+    :param is_rev: Is this a reversible reaction?
+    :param type_: The type of reaction
+    """
 
     @property
     @abc.abstractproperty
     def is_rev(self):
         pass
 
-
-def type_(rate: Rate) -> RateType:
-    """The type of reaction
-
-    :param rate: The rate object
-    :return: The type of reaction
-    """
-    return rate.type_
+    @property
+    @abc.abstractproperty
+    def type_(self):
+        pass
 
 
 def is_reversible(rate: Rate) -> bool:
@@ -125,6 +120,33 @@ def is_reversible(rate: Rate) -> bool:
     :return: `True` if it does, `False` if it doesn't
     """
     return rate.is_rev
+
+
+def type_(rate: Rate) -> RateType:
+    """Get the type of reaction
+
+    :param rate: The rate object
+    :return: The type of reaction
+    """
+    return rate.type_
+
+
+def has_collider(rate: Rate) -> bool:
+    """Does this rate type involve a collider?
+
+    :param rate: The rate object
+    :return: `True` if it does, `False` if it doesn't
+    """
+    return type_(rate) in (RateType.ACTIVATED, RateType.FALLOFF)
+
+
+def is_falloff(rate: Rate) -> bool:
+    """Is this a falloff reaction?
+
+    :param rate: The rate object
+    :return: `True` if it is, `False` if it isn't
+    """
+    return type_(rate) == RateType.FALLOFF
 
 
 @dataclasses.dataclass
@@ -159,6 +181,7 @@ class SimpleRate(Rate):
 
         if self.type_ != RateType.CONSTANT:
             self.f = BlendingFunction() if self.f is None else self.f
+            self.m = "M" if self.m is None else self.m
 
 
 def arrhenius_function(rate: SimpleRate) -> ArrheniusFunction:
@@ -308,7 +331,7 @@ def high_p_params(
 
 def from_chemkin(
     arrow: str = "=",
-    plus_m: str = "",
+    coll: str = "",
     arrh: Optional[Params3] = None,
     arrh0: Optional[Params4] = None,
     troe: Optional[Params3or4] = None,
@@ -319,8 +342,8 @@ def from_chemkin(
     Ignores Chebyshev for now...
 
     :param arrow: The CHEMKIN arrow, indicating whether or not the reaction is reversible
-    :param plus_m: The CHEMKIN M collider, 'M' or '(+M)', indicating the type of
-        pressure dependence for simple reactions
+    :param coll: The CHEMKIN collider, 'M' or '(+M)', indicating the type of pressure
+        dependence for simple reactions
     :param arrh: The high-pressure Arrhenius parameters, defaults to None
     :param arrh0: The low-pressure Arrhenius parameters, defaults to None
     :param troe: The Troe parameters, defaults to None
@@ -347,12 +370,9 @@ def from_chemkin(
     f = None if troe is None else BlendingFunction(troe, type_=BlendType.TROE)
 
     # Determine the pressure dependency type from the M collider
-    m2t = {"": RateType.CONSTANT, "M": RateType.ACTIVATED, "(M)": RateType.FALLOFF}
-    type_ = m2t[plus_m.replace(" ", "").replace("+", "")]
-    assert f is None or type_ in (
-        RateType.ACTIVATED,
-        RateType.FALLOFF,
-    ), "Troe coefficients without +M"
+    type_ = RateType.CONSTANT
+    if coll:
+        type_ = RateType.FALLOFF if "(" in coll else RateType.ACTIVATED
 
     return SimpleRate(k=k, k0=k0, f=f, is_rev=is_rev, type_=type_)
 

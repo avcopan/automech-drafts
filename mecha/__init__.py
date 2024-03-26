@@ -8,6 +8,7 @@ from mecha._mecha import (
     display_reactions,
     expand_duplicates,
     expand_stereo,
+    to_mechanalyzer,
 )
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "combine_duplicates",
     "expand_duplicates",
     "expand_stereo",
+    "to_mechanalyzer",
 ]

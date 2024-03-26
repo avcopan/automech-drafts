@@ -4,6 +4,9 @@ import automol
 import pandas
 import pandera as pa
 from pandera.typing import Series
+from tqdm.auto import tqdm
+
+tqdm.pandas()
 
 
 class Species(pa.DataFrameModel):
@@ -48,10 +51,10 @@ def validate_species(df: pandas.DataFrame, smi: bool = False) -> pandas.DataFram
     ), f"Must have either 'chi' or 'smi' column: {df}"
 
     if Species.chi not in df:
-        df[Species.chi] = df[Species.smi].map(automol.smiles.chi)
+        df[Species.chi] = df[Species.smi].progress_apply(automol.smiles.chi)
 
     if smi and Species.smi not in df:
-        df[Species.smi] = df[Species.chi].map(automol.amchi.smiles)
+        df[Species.smi] = df[Species.chi].progress_apply(automol.amchi.smiles)
 
     return validate(Species, df)
 

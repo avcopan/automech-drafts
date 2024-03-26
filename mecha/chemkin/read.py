@@ -93,7 +93,7 @@ def reaction_kinetics(mech_str: str) -> List[str]:
             rcts=list(dct["reactants"]["species"]),
             prds=list(dct["products"]["species"]),
             arrow=dct["arrow"],
-            plus_m=dct.get("falloff", ""),
+            falloff=dct.get("falloff", ""),
             arrh=dct.get("arrh", None),
             arrh0=dct.get("arrh0", None),
             troe=dct.get("arrh0", None),

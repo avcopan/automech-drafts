@@ -41,7 +41,7 @@ def display_reactions(
 
         # Display the reaction
         eq = row[Reactions.eq]
-        rchis, pchis = data.reac.parse_equation(eq, trans_dct=chi_dct)
+        rchis, pchis, _ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
         if not all(isinstance(n, str) for n in rchis + pchis):
             print(f"Some ChIs missing from species table: {rchis} = {pchis}")
         else:
@@ -68,7 +68,7 @@ def classify_reactions(
     chi_dct = df_.lookup_dict(spc_df, Species.name, Species.chi)
 
     def objs_(eq):
-        rchis, pchis = data.reac.parse_equation(eq, trans_dct=chi_dct)
+        rchis, pchis, _ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
         objs = automol.reac.from_amchis(rchis, pchis, stereo=False)
         return objs if objs else pandas.NA
 
@@ -133,13 +133,13 @@ def expand_stereo(
         objs = row[Reactions.obj]
         eqs = []
         for obj in objs:
-            rname0s, pname0s = data.reac.parse_equation(eq0)
+            rname0s, pname0s, _ = data.reac.read_chemkin_equation(eq0)
             rchis, pchis = automol.reac.amchis(obj)
             rnames = tuple(map(name_dct.get, zip(rname0s, rchis)))
             pnames = tuple(map(name_dct.get, zip(pname0s, pchis)))
             if not all(isinstance(n, str) for n in rnames + pnames):
                 return pandas.NA
-            eqs.append(data.reac.form_equation(rnames, pnames))
+            eqs.append(data.reac.write_chemkin_equation(rnames, pnames))
         return tuple(eqs)
 
     rxn_df[Reactions.eq] = rxn_df.progress_apply(eq_, axis=1)
@@ -156,17 +156,63 @@ def expand_stereo(
     return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
 
 
-def to_old_dicts(
+def to_mechanalyzer(
     rxn_df: pandas.DataFrame, spc_df: pandas.DataFrame, drop: bool = False
-) -> Tuple[dict, dict]:
+) -> Tuple[str, str]:
     """Get old reaction and species dictionaries for a mechanism
 
     :param rxn_df: The reactions dataframe
     :param spc_df: The species dataframe
     :param drop: Drop species which have no reactions?, defaults to False
-    :return: The old reaction and species dictionaries
+    :return: The mechanism and species list, in CHEMKIN and CSV formats, respectively
     """
-    pass
+    import chemkin_io
+
+    from mechanalyzer.parser import spc as ma_species_io_
+
+    rate0 = data.rate.SimpleRate()
+    headers0 = ["name", "inchi", "smiles", "charge", "mult"]
+
+    rxn_df = schema.validate_reactions(rxn_df)
+    spc_df = schema.validate_species(spc_df)
+
+    # 1. Form the reactions dictionary
+    def reaction_dict_item_(row):
+        eq = row[Reactions.eq]
+        rate = row[Reactions.rate] if Reactions.rate in row else rate0
+        rxn = data.reac.from_equation(eq, rate)
+        key = data.reac.chemkin_reagents(rxn, tuple_coll=True)
+        val = data.rate.to_old_object(data.reac.rate(rxn))
+        return (key, val)
+
+    rxn_dct = dict(rxn_df.progress_apply(reaction_dict_item_, axis=1).to_list())
+
+    # 3. Drop unused species, if requested
+    if drop:
+        spc_set = {s for r, p, _ in rxn_dct for s in r + p}
+        spc_df = spc_df[spc_df[Species.name].isin(spc_set)]
+        assert (
+            set(spc_df[Species.name]) == spc_set
+        ), f'Missing species: {set(spc_df["name"]) - spc_set}'
+
+    # 2. Re-format the species dataframe
+    spc_df = schema.validate_species(spc_df, smi=True)
+    spc_df[Species.chi] = spc_df[Species.chi].progress_apply(automol.chi.inchi_to_amchi)
+    spc_df = spc_df.rename(columns={Species.chi: "inchi", Species.smi: "smiles"})
+
+    # 4. build the mechanism string
+    spc_df["fml"] = spc_df["inchi"].progress_apply(automol.amchi.formula)
+    spc_df = spc_df[~spc_df["name"].duplicated(keep="first")]
+    spc_df = spc_df.set_index("name")
+    spc_dct = spc_df.to_dict("index")
+    mech_str = chemkin_io.writer.mechanism.write_chemkin_file(
+        mech_spc_dct=spc_dct, rxn_param_dct=rxn_dct
+    )
+
+    # 5. build the species string
+    spc_df = spc_df.drop(columns=spc_df.columns.difference(headers0))
+    spc_str = ma_species_io_.csv_string(spc_df.to_dict("index"), spc_df.columns)
+    return mech_str, spc_str
 
 
 # Helpers
