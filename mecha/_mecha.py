@@ -171,7 +171,15 @@ def to_mechanalyzer(
     from mechanalyzer.parser import spc as ma_species_io_
 
     rate0 = data.rate.SimpleRate()
-    headers0 = ["name", "inchi", "smiles", "charge", "mult"]
+    headers0 = [
+        "name",
+        "smiles",
+        "inchi",
+        "inchikey",
+        "mult",
+        "charge",
+        "canon_enant_ich",
+    ]
 
     rxn_df = schema.validate_reactions(rxn_df)
     spc_df = schema.validate_species(spc_df)
@@ -187,7 +195,7 @@ def to_mechanalyzer(
 
     rxn_dct = dict(rxn_df.progress_apply(reaction_dict_item_, axis=1).to_list())
 
-    # 3. Drop unused species, if requested
+    # 2. Drop unused species, if requested
     if drop:
         spc_set = {s for r, p, _ in rxn_dct for s in r + p}
         spc_df = spc_df[spc_df[Species.name].isin(spc_set)]
@@ -195,22 +203,54 @@ def to_mechanalyzer(
             set(spc_df[Species.name]) == spc_set
         ), f'Missing species: {set(spc_df["name"]) - spc_set}'
 
-    # 2. Re-format the species dataframe
+    # 3. Re-format the species dataframe
     spc_df = schema.validate_species(spc_df, smi=True)
     spc_df[Species.chi] = spc_df[Species.chi].progress_apply(automol.chi.inchi_to_amchi)
     spc_df = spc_df.rename(columns={Species.chi: "inchi", Species.smi: "smiles"})
 
-    # 4. build the mechanism string
+    # 4. Make sure we have all of the usual columns
     spc_df["fml"] = spc_df["inchi"].progress_apply(automol.amchi.formula)
+    spc_df["inchikey"] = spc_df["inchi"].progress_apply(automol.chi.inchi_key)
+    spc_df["canon_enant_ich"] = spc_df["inchi"].progress_apply(
+        automol.chi.canonical_enantiomer
+    )
+    spc_df = spc_df.drop(columns=spc_df.columns.difference(headers0))
+
+    # 5. Add in the basis species
+    basis_dct = {
+        "H2": automol.smiles.inchi("[H][H]"),
+        "H2O": automol.smiles.inchi("O"),
+        "CH4": automol.smiles.inchi("C"),
+    }
+    for name, chi in basis_dct.items():
+        if chi not in spc_df["inchi"].values:
+            row_dct = {
+                "name": name,
+                "smiles": automol.amchi.smiles(chi),
+                "inchi": chi,
+                "inchikey": automol.chi.inchi_key(chi),
+                "mult": 1,
+                "charge": 0,
+                "canon_enant_ich": automol.chi.canonical_enantiomer(chi),
+            }
+            row = pandas.DataFrame([row_dct])
+            spc_df = pandas.concat([row, spc_df], ignore_index=True)
+
+    # 6. Move the basis species to the top
+    in_basis = spc_df["inchi"].isin(basis_dct.values())
+    spc_df = pandas.concat([spc_df[in_basis], spc_df[~in_basis]], ignore_index=True)
+
+    # 7. Form the species dictionary
     spc_df = spc_df[~spc_df["name"].duplicated(keep="first")]
     spc_df = spc_df.set_index("name")
     spc_dct = spc_df.to_dict("index")
+
+    # 8. Write the mechanism string
     mech_str = chemkin_io.writer.mechanism.write_chemkin_file(
         mech_spc_dct=spc_dct, rxn_param_dct=rxn_dct
     )
 
-    # 5. build the species string
-    spc_df = spc_df.drop(columns=spc_df.columns.difference(headers0))
+    # 9. Write the species string
     spc_str = ma_species_io_.csv_string(spc_df.to_dict("index"), spc_df.columns)
     return mech_str, spc_str
 
