@@ -5,8 +5,8 @@ import automol
 import pandas
 from tqdm.auto import tqdm
 
-from mecha import chemkin, schema
-from mecha.schema import Species
+from old_mecha import chemkin, schema
+from old_mecha.schema import Species
 
 tqdm.pandas()
 

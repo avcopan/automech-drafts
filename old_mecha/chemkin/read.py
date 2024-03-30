@@ -10,7 +10,7 @@ import pandas
 import pyparsing as pp
 from pyparsing import pyparsing_common as ppc
 
-from mecha import data, schema
+from old_mecha import data, schema
 
 # generic
 COMMENT_REGEX = re.compile(r"!.*$", flags=re.M)

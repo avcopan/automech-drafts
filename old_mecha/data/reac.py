@@ -6,7 +6,7 @@ from typing import Dict, Optional, Tuple
 
 import pyparsing as pp
 
-from mecha.data import rate as rate_
+from old_mecha.data import rate as rate_
 
 
 @dataclasses.dataclass

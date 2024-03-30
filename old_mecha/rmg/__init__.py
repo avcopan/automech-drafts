@@ -1,6 +1,6 @@
 """RMG I/O
 """
 
-from mecha.rmg import read
+from old_mecha.rmg import read
 
 __all__ = ["read"]

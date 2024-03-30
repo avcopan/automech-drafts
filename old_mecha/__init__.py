@@ -1,8 +1,8 @@
 """Mechanism processing
 """
 
-from mecha import chemkin, data, rmg, species, util
-from mecha._mecha import (
+from old_mecha import chemkin, data, rmg, species, util
+from old_mecha._mecha import (
     classify_reactions,
     combine_duplicates,
     display_reactions,

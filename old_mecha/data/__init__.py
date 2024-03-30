@@ -1,8 +1,8 @@
 """Dataclasses for storing kinetic, thermodynamic, and other information
 """
 
-from mecha.data import rate, reac, thermo
-from mecha.data.rate import (
+from old_mecha.data import rate, reac, thermo
+from old_mecha.data.rate import (
     ArrheniusFunction,
     BlendingFunction,
     BlendType,
@@ -11,8 +11,8 @@ from mecha.data.rate import (
     RateType,
     SimpleRate,
 )
-from mecha.data.reac import Reaction
-from mecha.data.thermo import Thermo
+from old_mecha.data.reac import Reaction
+from old_mecha.data.thermo import Thermo
 
 __all__ = [
     "rate",

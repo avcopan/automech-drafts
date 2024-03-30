@@ -1,6 +1,6 @@
 """CHEMKIN I/O
 """
 
-from mecha.chemkin import name, read
+from old_mecha.chemkin import name, read
 
 __all__ = ["name", "read"]
