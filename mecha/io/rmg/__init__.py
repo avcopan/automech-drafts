@@ -1,4 +1,4 @@
-""" RMG I/O
+"""RMG I/O
 """
 
 from mecha.io.rmg import read

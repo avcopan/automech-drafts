@@ -1,24 +1,20 @@
 from typing import Optional
 
 import automol
-import pandas
-import pandera as pa
-from pandera.typing import Series
-from tqdm.auto import tqdm
-
-tqdm.pandas()
+import polars
+from pandera import polars as pa
 
 
 class Species(pa.DataFrameModel):
-    name: Series[str] = pa.Field(coerce=True)
-    mult: Series[int] = pa.Field(coerce=True)
-    charge: Series[int] = pa.Field(coerce=True, default=0)
-    chi: Series[str]
-    smi: Optional[Series[str]]
+    name: str
+    mult: int
+    charge: int
+    chi: str
+    smi: Optional[str]
     # Original column names (before stereoexpansion)
-    orig_name: Optional[Series[str]]
-    orig_chi: Optional[Series[str]]
-    orig_smi: Optional[Series[str]]
+    orig_name: Optional[str]
+    orig_chi: Optional[str]
+    orig_smi: Optional[str]
 
 
 S_CURR_COLS = (Species.name, Species.chi, Species.smi)
@@ -26,12 +22,12 @@ S_ORIG_COLS = (Species.orig_name, Species.orig_chi, Species.orig_smi)
 
 
 class Reactions(pa.DataFrameModel):
-    eq: Series[str] = pa.Field(coerce=True)
-    rate: Optional[Series[object]]
-    chi: Optional[Series[str]]
-    obj: Optional[Series[object]]
-    orig_eq: Optional[Series[str]]
-    orig_chi: Optional[Series[str]]
+    eq: str
+    rate: Optional[object]
+    chi: Optional[str]
+    obj: Optional[object]
+    orig_eq: Optional[str]
+    orig_chi: Optional[str]
 
 
 R_CURR_COLS = (Reactions.eq, Reactions.chi)
@@ -39,7 +35,7 @@ R_ORIG_COLS = (Reactions.orig_eq, Reactions.orig_chi)
 DUP_DIFF_COLS = (Reactions.rate, Reactions.chi, Reactions.obj)
 
 
-def validate_species(df: pandas.DataFrame, smi: bool = False) -> pandas.DataFrame:
+def validate_species(df: polars.DataFrame, smi: bool = False) -> polars.DataFrame:
     """Validate a species data frame
 
     :param df: The dataframe
@@ -51,15 +47,15 @@ def validate_species(df: pandas.DataFrame, smi: bool = False) -> pandas.DataFram
     ), f"Must have either 'chi' or 'smi' column: {df}"
 
     if Species.chi not in df:
-        df[Species.chi] = df[Species.smi].progress_apply(automol.smiles.chi)
+        df[Species.chi] = df[Species.smi].map_elements(automol.smiles.chi)
 
     if smi and Species.smi not in df:
-        df[Species.smi] = df[Species.chi].progress_apply(automol.amchi.smiles)
+        df[Species.smi] = df[Species.chi].map_elements(automol.amchi.smiles)
 
     return validate(Species, df)
 
 
-def validate_reactions(df: pandas.DataFrame) -> pandas.DataFrame:
+def validate_reactions(df: polars.DataFrame) -> polars.DataFrame:
     """Validate a reactions data frame
 
     :param df: The dataframe
@@ -68,17 +64,16 @@ def validate_reactions(df: pandas.DataFrame) -> pandas.DataFrame:
     return validate(Reactions, df)
 
 
-def validate(model: pa.DataFrameModel, df: pandas.DataFrame) -> pandas.DataFrame:
-    """Validate a pandas dataframe based on a model
+def validate(model: pa.DataFrameModel, df: polars.DataFrame) -> polars.DataFrame:
+    """Validate a dataframe based on a model
 
     :param model: The model
     :param df: The dataframe
     :return: The validated dataframe
     """
     schema = model.to_schema()
-    schema.add_missing_columns = True
     schema.strict = False
     df = schema.validate(df)
     cols = [c for c in schema.columns.keys() if c in df]
-    cols.extend(df.columns.difference(cols))
+    cols.extend(c for c in df.columns if c not in cols)
     return df[cols]

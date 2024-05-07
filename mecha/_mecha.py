@@ -7,9 +7,9 @@ import automol
 import pandas
 from tqdm.auto import tqdm
 
-from old_mecha import data, schema, species
-from old_mecha.schema import Reactions, Species
-from old_mecha.util import df_
+from mecha import data, schema, species
+from mecha.schema import Reactions, Species
+from mecha.util import df_
 
 tqdm.pandas()
 

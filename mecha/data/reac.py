@@ -5,16 +5,15 @@ import dataclasses
 from typing import Dict, Optional, Tuple
 
 import pyparsing as pp
-from old_mecha.data import rate as rate_
+
+from mecha.data import rate as rate_
 
 # Chemkin parsers
 SPECIES_NAME_START = pp.WordStart(pp.alphas)
 SPECIES_NAME_BODY = pp.Word(pp.printables, exclude_chars="+=<>!") + ~pp.FollowedBy("+")
-SPECIES_NAME_END = pp.Word(pp.printables, exclude_chars="+=<>!()")
+SPECIES_NAME = pp.Word(pp.printables, exclude_chars="+=<>!()")
 
-SPECIES_NAME = pp.Combine(
-    SPECIES_NAME_START + pp.Opt(SPECIES_NAME_BODY) + pp.Opt(SPECIES_NAME_END)
-)
+SPECIES_NAME = pp.Combine(SPECIES_NAME_START + pp.Opt(SPECIES_NAME_BODY) + pp.Opt(SPECIES_NAME))
 ARROW = pp.Literal("=") ^ pp.Literal("=>") ^ pp.Literal("<=>")
 FALLOFF = pp.Combine(
     pp.Literal("(") + pp.Literal("+") + pp.Literal("M") + pp.Literal(")"),
@@ -199,8 +198,7 @@ def read_chemkin_equation(
         return name if trans_dct is None else trans_dct.get(name)
 
     r_expr = pp.Group(
-        pp.delimitedList(SPECIES_NAME, delim="+")("species")
-        + pp.Opt(FALLOFF)("falloff")
+        pp.delimitedList(SPECIES_NAME, delim="+")("species") + pp.Opt(FALLOFF)("falloff")
     )
     parser = r_expr("reactants") + ARROW("arrow") + r_expr("products")
     dct = parser.parseString(eq).asDict()

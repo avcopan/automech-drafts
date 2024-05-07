@@ -5,7 +5,7 @@ import os
 from typing import Any, Dict, Optional
 
 import automol
-import polars
+import pandas
 import pyparsing as pp
 from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
@@ -34,7 +34,6 @@ def species_dictionary(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
 
     names = []
     mults = []
-    charges = []
     smis = []
     chis = []
     for spc_par_ret in tqdm(spc_par_rets):
@@ -43,20 +42,19 @@ def species_dictionary(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
 
         names.append(spc_par_ret["species"])
         mults.append(spc_par_ret.get("mult", 1))
-        charges.append(0)
         chis.append(automol.graph.inchi(gra))
         smis.append(automol.graph.smiles(gra))
 
-    spc_df = polars.DataFrame(
+    spc_df = pandas.DataFrame(
         {
             schema.Species.name: names,
             schema.Species.mult: mults,
-            schema.Species.charge: charges,
             schema.Species.chi: chis,
             schema.Species.smi: smis,
         }
     )
+
     if out is not None:
-        spc_df.write_csv(out)
+        spc_df.to_csv(out)
 
     return schema.validate_species(spc_df)

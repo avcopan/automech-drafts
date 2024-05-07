@@ -5,8 +5,8 @@ import automol
 import pandas
 from tqdm.auto import tqdm
 
-from old_mecha import chemkin, schema
-from old_mecha.schema import Species
+from mecha import data, schema
+from mecha.schema import Species
 
 tqdm.pandas()
 
@@ -25,7 +25,7 @@ def expand_stereo(spc_df: pandas.DataFrame, enant: bool = True) -> pandas.DataFr
     def name_(row):
         name = row[Species.orig_name]
         chi = row[Species.chi]
-        return chemkin.name.with_stereo_suffix(name, chi, racem=not enant)
+        return data.name.with_stereo_suffix(name, chi, racem=not enant)
 
     spc_df = schema.validate_species(spc_df)
     spc_df = rename_with_original_columns(spc_df)
