@@ -11,6 +11,7 @@ from automol.graph import RMG_ADJACENCY_LIST
 from pyparsing import pyparsing_common as ppc
 from tqdm.auto import tqdm
 
+from mecha import schema
 from mecha.data.reac import SPECIES_NAME
 
 MULTIPLICITY = pp.CaselessLiteral("multiplicity") + ppc.integer("mult")
@@ -30,8 +31,10 @@ def species_dictionary(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
     inp = open(inp).read() if os.path.exists(inp) else inp
 
     spc_par_rets = SPECIES_DICT.parseString(inp).asDict()["dict"]
+
     names = []
     mults = []
+    charges = []
     smis = []
     chis = []
     for spc_par_ret in tqdm(spc_par_rets):
@@ -40,27 +43,20 @@ def species_dictionary(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
 
         names.append(spc_par_ret["species"])
         mults.append(spc_par_ret.get("mult", 1))
+        charges.append(0)
         chis.append(automol.graph.inchi(gra))
         smis.append(automol.graph.smiles(gra))
 
     spc_df = polars.DataFrame(
         {
-            "name": names,
-            "mult": mults,
-            "chi": chis,
-            "smi": smis,
+            schema.Species.name: names,
+            schema.Species.mult: mults,
+            schema.Species.charge: charges,
+            schema.Species.chi: chis,
+            schema.Species.smi: smis,
         }
     )
     if out is not None:
         spc_df.write_csv(out)
 
-    return spc_df
-    # spc_df = polars.DataFrame(
-    #     {
-    #         schema.Species.name: names,
-    #         schema.Species.mult: mults,
-    #         schema.Species.chi: chis,
-    #         schema.Species.smi: smis,
-    #     }
-    # )
-    # return schema.validate_species(spc_df, smi=True)
+    return schema.validate_species(spc_df)
