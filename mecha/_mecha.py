@@ -1,13 +1,13 @@
 """Primary mechanism processing routines
 """
 
-from typing import Tuple
+from typing import Optional, Tuple, Union
 
 import automol
 import pandas
 from tqdm.auto import tqdm
 
-from mecha import data, schema, species
+from mecha import data, schema
 from mecha.schema import Reactions, Species
 from mecha.util import df_
 
@@ -62,7 +62,7 @@ def classify_reactions(
     rxn_df = schema.validate_reactions(rxn_df)
     spc_df = schema.validate_species(spc_df)
 
-    rxn_df = combine_duplicates(rxn_df, first=False)
+    rxn_df = combine_duplicate_reactions(rxn_df, first=False)
 
     # Do the classification with a progress bar, since it may take a while
     chi_dct = df_.lookup_dict(spc_df, Species.name, Species.chi)
@@ -82,13 +82,48 @@ def classify_reactions(
     def amchi_(obj):
         return automol.reac.ts_amchi(obj)
 
-    rxn_df = expand_duplicates(rxn_df)
+    rxn_df = expand_duplicate_reactions(rxn_df)
     rxn_df[Reactions.chi] = rxn_df[Reactions.obj].progress_apply(amchi_)
 
     # Expand duplicates among the unclassified reactions again
-    err_df = expand_duplicates(err_df)
+    err_df = expand_duplicate_reactions(err_df)
 
     return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
+
+
+def expand_species_stereo(
+    spc_inp: Union[pandas.DataFrame, str],
+    spc_out: Optional[str] = None,
+    enant: bool = True,
+) -> pandas.DataFrame:
+    """Expand stereochemistry for a list of species
+
+    :param spc_inp: A dataframe or CSV filepath with species data
+    :param spc_out: Optionally, write the species data output to this file path
+    :param enant: Distinguish between enantiomers?, defaults to True
+    :return: The stereo-expanded species dataframe
+    """
+    spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+
+    def expand_amchi_(chi):
+        return automol.amchi.expand_stereo(chi, enant=enant)
+
+    def name_(row):
+        name = row[Species.orig_name]
+        chi = row[Species.chi]
+        return data.name.with_stereo_suffix(name, chi, racem=not enant)
+
+    spc_df = schema.validate_species(spc_df)
+    spc_df = spc_df.rename(columns=dict(zip(schema.S_CURR_COLS, schema.S_ORIG_COLS)))
+    spc_df[Species.chi] = spc_df[Species.orig_chi].progress_apply(expand_amchi_)
+    spc_df = spc_df.explode(Species.chi)
+    spc_df[Species.name] = spc_df.apply(name_, axis=1)
+
+    spc_df = schema.validate_species(spc_df)
+    if spc_out is not None:
+        spc_df.to_csv(spc_out)
+
+    return spc_df
 
 
 def expand_stereo(
@@ -97,25 +132,25 @@ def expand_stereo(
     enant: bool = True,
     expand_species: bool = True,
 ) -> pandas.DataFrame:
-    """Classify the reactions in a mechanism
+    """Stereoexpand the mechanism
 
     :param rxn_df: The reactions dataframe
     :param spc_df: The species dataframe
     :param enant: Distinguish between enantiomers?, defaults to True
     :param expand_species: Expand the species dataframe?
         If set to False, the species dataframe must already be expanded
-    :return: The reactions dataframe, with reaction objects for classified reactions
+    :return: The stereoexpanded reactions dataframe
     """
 
     # Expand species, if requested
     if expand_species:
-        spc_df = species.expand_stereo(spc_df, enant=enant)
+        spc_df = expand_species_stereo(spc_df, enant=enant)
 
     if not enant:
         raise NotImplementedError("Reduced expansion not yet implemented")
 
     rxn_df = schema.validate_reactions(rxn_df)
-    rxn_df = rename_with_original_columns(rxn_df)
+    rxn_df = rxn_df.rename(columns=dict(zip(schema.R_CURR_COLS, schema.R_ORIG_COLS)))
 
     # Expand reaction objects
     def objs_(obj):
@@ -153,7 +188,11 @@ def expand_stereo(
     )
     rxn_df = rxn_df.explode([Reactions.eq, Reactions.obj])
 
-    return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
+    return (
+        schema.validate_reactions(rxn_df),
+        schema.validate_reactions(err_df),
+        schema.validate_species(spc_df),
+    )
 
 
 def to_mechanalyzer(
@@ -256,7 +295,7 @@ def to_mechanalyzer(
 
 
 # Helpers
-def combine_duplicates(
+def combine_duplicate_reactions(
     rxn_df: pandas.DataFrame, first: bool = False
 ) -> pandas.DataFrame:
     """Combine duplicate reactions, so each reaction only appears once
@@ -274,7 +313,7 @@ def combine_duplicates(
     return rxn_df.groupby(Reactions.eq, as_index=False).agg(agg_dct)
 
 
-def expand_duplicates(rxn_df: pandas.DataFrame) -> pandas.DataFrame:
+def expand_duplicate_reactions(rxn_df: pandas.DataFrame) -> pandas.DataFrame:
     """Expand duplicate reactions, so they appear multiple times
 
     :param rxn_df: The reactions dataframe
@@ -283,15 +322,3 @@ def expand_duplicates(rxn_df: pandas.DataFrame) -> pandas.DataFrame:
     exp_cols = [c for c in schema.DUP_DIFF_COLS if c in rxn_df]
     rxn_df[exp_cols] = rxn_df[exp_cols].map(list)
     return rxn_df.explode(exp_cols)
-
-
-def rename_with_original_columns(rxn_df: pandas.DataFrame) -> pandas.DataFrame:
-    """Rename the reactions dataframe with original column names
-    (orig_reactants, orig_products, orig_chi)
-
-    Used when expanding stereo
-
-    :param rxn_df: The reactions dataframe
-    :return: The reactions dataframe
-    """
-    return rxn_df.rename(columns=dict(zip(schema.R_CURR_COLS, schema.R_ORIG_COLS)))
