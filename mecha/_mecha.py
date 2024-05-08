@@ -62,7 +62,7 @@ def classify_reactions(
     :param spc_inp: A dataframe or CSV filepath with species data
     :param out: Optionally, write the reaction data output to this file path
     :param err_out: Optionally, write the error data output to this file path
-    :return: Dataframes of classified and unclassified reactions, respectively
+    :return: A dataframe of classified reactions, and a dataframe of error cases
     """
     rxn_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
     spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
@@ -112,7 +112,7 @@ def expand_species_stereo(
     out: Optional[str] = None,
     enant: bool = True,
 ) -> pandas.DataFrame:
-    """Expand stereochemistry for a list of species
+    """Stereoexpand a list of species
 
     :param inp: A dataframe or CSV filepath with species data
     :param out: Optionally, write the species data output to this file path
@@ -142,25 +142,26 @@ def expand_species_stereo(
     return spc_df
 
 
-def expand_stereo(
-    rxn_df: pandas.DataFrame,
-    spc_df: pandas.DataFrame,
+def expand_reaction_stereo(
+    inp: Union[pandas.DataFrame, str],
+    spc_inp: Union[pandas.DataFrame, str],
+    out: Optional[str] = None,
+    err_out: Optional[str] = None,
     enant: bool = True,
-    expand_species: bool = True,
-) -> pandas.DataFrame:
-    """Stereoexpand the mechanism
+) -> Tuple[pandas.DataFrame, pandas.DataFrame]:
+    """Stereoexpand a list of reactions
 
-    :param rxn_df: The reactions dataframe
-    :param spc_df: The species dataframe
+    Requires that the reactions have been classified and the species have been expanded
+
+    :param inp: A dataframe or CSV filepath with reaction data
+    :param spc_inp: A dataframe or CSV filepath with stereoexpanded species data
+    :param out: Optionally, write the reaction data output to this file path
+    :param err_out: Optionally, write the error data output to this file path
     :param enant: Distinguish between enantiomers?, defaults to True
-    :param expand_species: Expand the species dataframe?
-        If set to False, the species dataframe must already be expanded
-    :return: The stereoexpanded reactions dataframe
+    :return: A dataframe of stereoexpanded reactions, and a dataframe of error cases
     """
-
-    # Expand species, if requested
-    if expand_species:
-        spc_df = expand_species_stereo(spc_df, enant=enant)
+    rxn_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
+    spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
 
     if not enant:
         raise NotImplementedError("Reduced expansion not yet implemented")
@@ -204,11 +205,40 @@ def expand_stereo(
     )
     rxn_df = rxn_df.explode([Reactions.eq, Reactions.obj])
 
-    return (
-        schema.validate_reactions(rxn_df),
-        schema.validate_reactions(err_df),
-        schema.validate_species(spc_df),
+    rxn_df = schema.validate_reactions(rxn_df)
+    if out is not None:
+        rxn_df.to_csv(out, index=False)
+
+    err_df = schema.validate_reactions(err_df)
+    if out is not None:
+        err_df.to_csv(err_out, index=False)
+
+    return rxn_df, err_df
+
+
+def expand_stereo(
+    inp: Union[pandas.DataFrame, str],
+    spc_inp: Union[pandas.DataFrame, str],
+    out: Optional[str] = None,
+    err_out: Optional[str] = None,
+    spc_out: Optional[str] = None,
+    enant: bool = True,
+) -> Tuple[pandas.DataFrame, pandas.DataFrame]:
+    """Stereoexpand a mechanism (both species and reactions)
+
+    :param inp: A dataframe or CSV filepath with reaction data
+    :param spc_inp: A dataframe or CSV filepath with stereoexpanded species data
+    :param out: Optionally, write the reaction data output to this file path
+    :param err_out: Optionally, write the error data output to this file path
+    :param enant: Distinguish between enantiomers?, defaults to True
+    :return: Dataframes of stereoexpanded reactions and species, and a dataframe of
+        error cases for the reactions
+    """
+    spc_df = expand_species_stereo(spc_inp, out=spc_out, enant=enant)
+    rxn_df, err_df = expand_reaction_stereo(
+        inp, spc_inp, out=out, err_out=err_out, enant=enant
     )
+    return rxn_df, spc_df, err_df
 
 
 def to_mechanalyzer(
