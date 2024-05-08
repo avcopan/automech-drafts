@@ -92,18 +92,18 @@ def classify_reactions(
 
 
 def expand_species_stereo(
-    spc_inp: Union[pandas.DataFrame, str],
-    spc_out: Optional[str] = None,
+    inp: Union[pandas.DataFrame, str],
+    out: Optional[str] = None,
     enant: bool = True,
 ) -> pandas.DataFrame:
     """Expand stereochemistry for a list of species
 
-    :param spc_inp: A dataframe or CSV filepath with species data
-    :param spc_out: Optionally, write the species data output to this file path
+    :param inp: A dataframe or CSV filepath with species data
+    :param out: Optionally, write the species data output to this file path
     :param enant: Distinguish between enantiomers?, defaults to True
     :return: The stereo-expanded species dataframe
     """
-    spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+    spc_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
 
     def expand_amchi_(chi):
         return automol.amchi.expand_stereo(chi, enant=enant)
@@ -120,8 +120,8 @@ def expand_species_stereo(
     spc_df[Species.name] = spc_df.apply(name_, axis=1)
 
     spc_df = schema.validate_species(spc_df)
-    if spc_out is not None:
-        spc_df.to_csv(spc_out)
+    if out is not None:
+        spc_df.to_csv(out)
 
     return spc_df
 

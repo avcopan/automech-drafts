@@ -10,10 +10,10 @@ from mecha.data import rate as rate_
 
 # Chemkin parsers
 SPECIES_NAME_START = pp.WordStart(pp.alphas)
-SPECIES_NAME_BODY = pp.Word(pp.printables, exclude_chars="+=<>!") + ~pp.FollowedBy("+")
-SPECIES_NAME = pp.Word(pp.printables, exclude_chars="+=<>!()")
+SPECIES_NAME_BODY = pp.Word(pp.printables, exclude_chars="+=<>!)") + ~pp.FollowedBy("+")
+SPECIES_NAME_END = pp.Word(pp.printables, exclude_chars="+=<>!(")
 
-SPECIES_NAME = pp.Combine(SPECIES_NAME_START + pp.Opt(SPECIES_NAME_BODY) + pp.Opt(SPECIES_NAME))
+SPECIES_NAME = pp.Combine(SPECIES_NAME_START + pp.Opt(SPECIES_NAME_BODY) + pp.Opt(SPECIES_NAME_END))
 ARROW = pp.Literal("=") ^ pp.Literal("=>") ^ pp.Literal("<=>")
 FALLOFF = pp.Combine(
     pp.Literal("(") + pp.Literal("+") + pp.Literal("M") + pp.Literal(")"),

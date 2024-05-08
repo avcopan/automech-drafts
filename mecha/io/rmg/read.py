@@ -21,12 +21,12 @@ SPECIES_ENTRY = (
 SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 
-def species_dictionary(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
-    """Parse a species dictionary string
+def species(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
+    """Extract species information as a dataframe from an RMG species dictionary
 
     :param inp: An RMG species dictionary, as a file path or string
     :param out: Optionally, write the output to this file path
-    :return: A dictionary mapping CHEMKIN names onto automol graphs
+    :return: The species dataframe
     """
     inp = open(inp).read() if os.path.exists(inp) else inp
 
