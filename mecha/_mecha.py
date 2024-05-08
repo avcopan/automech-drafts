@@ -51,14 +51,22 @@ def display_reactions(
 
 
 def classify_reactions(
-    rxn_df: pandas.DataFrame, spc_df: pandas.DataFrame
-) -> pandas.DataFrame:
+    inp: Union[pandas.DataFrame, str],
+    spc_inp: Union[pandas.DataFrame, str],
+    out: Optional[str] = None,
+    err_out: Optional[str] = None,
+) -> Tuple[pandas.DataFrame, pandas.DataFrame]:
     """Classify the reactions in a mechanism
 
-    :param rxn_df: The reactions dataframe
-    :param spc_df: The species dataframe
-    :return: The reactions dataframe, with reaction objects for classified reactions
+    :param inp: A dataframe or CSV filepath with reaction data
+    :param spc_inp: A dataframe or CSV filepath with species data
+    :param out: Optionally, write the reaction data output to this file path
+    :param err_out: Optionally, write the error data output to this file path
+    :return: Dataframes of classified and unclassified reactions, respectively
     """
+    rxn_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
+    spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+
     rxn_df = schema.validate_reactions(rxn_df)
     spc_df = schema.validate_species(spc_df)
 
@@ -88,7 +96,15 @@ def classify_reactions(
     # Expand duplicates among the unclassified reactions again
     err_df = expand_duplicate_reactions(err_df)
 
-    return schema.validate_reactions(rxn_df), schema.validate_reactions(err_df)
+    rxn_df = schema.validate_reactions(rxn_df)
+    if out is not None:
+        rxn_df.to_csv(out, index=False)
+
+    err_df = schema.validate_reactions(err_df)
+    if out is not None:
+        err_df.to_csv(err_out, index=False)
+
+    return rxn_df, err_df
 
 
 def expand_species_stereo(
@@ -121,7 +137,7 @@ def expand_species_stereo(
 
     spc_df = schema.validate_species(spc_df)
     if out is not None:
-        spc_df.to_csv(out)
+        spc_df.to_csv(out, index=False)
 
     return spc_df
 

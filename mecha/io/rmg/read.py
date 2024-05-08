@@ -56,6 +56,6 @@ def species(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
 
     spc_df = schema.validate_species(spc_df)
     if out is not None:
-        spc_df.to_csv(out)
+        spc_df.to_csv(out, index=False)
 
     return spc_df

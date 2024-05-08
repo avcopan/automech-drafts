@@ -83,7 +83,7 @@ def reactions(inp: str, out: Optional[str] = None) -> List[str]:
 
     rxn_df = schema.validate_reactions(rxn_df)
     if out is not None:
-        rxn_df.to_csv(out)
+        rxn_df.to_csv(out, index=False)
 
     return rxn_df
 
