@@ -1,6 +1,7 @@
 """Primary mechanism processing routines
 """
 
+import os
 from typing import Optional, Tuple, Union
 
 import automol
@@ -13,6 +14,57 @@ from mecha.schema import Reactions, Species
 from mecha.util import df_
 
 tqdm.pandas()
+
+
+def display(
+    inp: Union[pandas.DataFrame, str],
+    spc_inp: Union[pandas.DataFrame, str],
+    keys: Tuple[str, ...] = (Reactions.eq,),
+    stereo: bool = True,
+    out: str = "example.html",
+):
+    """Display a mechanism as a reaction network
+
+    :param inp: A reactions table, as a CSV file path or dataframe
+    :param spc_inp: A species table, as a CSV file path or dataframe
+    :param keys: Keys of extra columns to print
+    :param stereo: Display with stereochemistry?
+    :param out: The HTML file to write to
+    """
+    from IPython import display as ipd
+    from pyvis.network import Network
+
+    rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
+    spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+
+    rxn_df = schema.validate_reactions(rxn_df)
+    spc_df = schema.validate_species(spc_df)
+
+    image_dir = "images"
+    if not os.path.isdir(image_dir):
+        os.mkdir(image_dir)
+
+    def _create_image(chi):
+        gra = automol.amchi.graph(chi, stereo=stereo)
+        chk = automol.amchi.amchi_key(chi)
+        svg_str = automol.graph.svg_string(gra, image_size=50)
+
+        path = os.path.join(image_dir, f"{chk}.svg")
+        with open(path, mode="w") as file:
+            file.write(svg_str)
+
+        return path
+
+    spc_df["image_path"] = spc_df[Species.chi].progress_apply(_create_image)
+
+    net = Network(notebook=True)
+
+    def _add_node(row: pandas.Series):
+        path = row["image_path"]
+        net.add_node(row.name, shape="image", image=path)
+
+    spc_df.progress_apply(_add_node, axis=1)
+    ipd.display(net.show("example.html"))
 
 
 def display_reactions(
@@ -34,7 +86,6 @@ def display_reactions(
     rxn_df = schema.validate_reactions(rxn_df)
     spc_df = schema.validate_species(spc_df)
 
-    # Do the classification with a progress bar, since it may take a while
     chi_dct = df_.lookup_dict(spc_df, Species.name, Species.chi)
 
     def display_(row):

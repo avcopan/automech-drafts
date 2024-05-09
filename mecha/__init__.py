@@ -5,6 +5,7 @@ from mecha import data, io, util
 from mecha._mecha import (
     classify_reactions,
     combine_duplicate_reactions,
+    display,
     display_reactions,
     expand_duplicate_reactions,
     expand_reaction_stereo,
@@ -19,6 +20,7 @@ __all__ = [
     "util",
     "classify_reactions",
     "combine_duplicate_reactions",
+    "display",
     "display_reactions",
     "expand_duplicate_reactions",
     "expand_reaction_stereo",
