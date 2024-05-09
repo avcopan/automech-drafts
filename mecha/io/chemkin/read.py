@@ -10,6 +10,7 @@ import pyparsing as pp
 from pyparsing import pyparsing_common as ppc
 
 from mecha import data, schema
+from mecha.util import df_
 
 # generic
 COMMENT_REGEX = re.compile(r"!.*$", flags=re.M)
@@ -34,7 +35,7 @@ DUP = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))
 
 
 # reactions
-def reactions(inp: str, out: Optional[str] = None) -> List[str]:
+def reactions(inp: str, out: Optional[str] = None) -> pandas.DataFrame:
     """Extract reaction information as a dataframe from a CHEMKIN file
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -45,7 +46,8 @@ def reactions(inp: str, out: Optional[str] = None) -> List[str]:
 
     # Build the parser
     r_expr = pp.Group(
-        pp.delimitedList(SPECIES_NAME, delim="+")("species") + pp.Opt(FALLOFF)("falloff")
+        pp.delimitedList(SPECIES_NAME, delim="+")("species")
+        + pp.Opt(FALLOFF)("falloff")
     )
     eq_expr = r_expr("reactants") + ARROW("arrow") + r_expr("products")
     rxn_expr = (
@@ -82,8 +84,7 @@ def reactions(inp: str, out: Optional[str] = None) -> List[str]:
     )
 
     rxn_df = schema.validate_reactions(rxn_df)
-    if out is not None:
-        rxn_df.to_csv(out, index=False)
+    df_.to_csv(rxn_df, out)
 
     return rxn_df
 
@@ -142,7 +143,9 @@ def species_with_comments(mech_str: str) -> Dict[str, List[str]]:
     :param mech_str: A CHEMKIN mechanism string
     :return: A dictionary mapping species onto their comments
     """
-    parser = pp.Suppress(...) + pp.OneOrMore(pp.Group(SPECIES_NAME + pp.Group(COMMENTS)))
+    parser = pp.Suppress(...) + pp.OneOrMore(
+        pp.Group(SPECIES_NAME + pp.Group(COMMENTS))
+    )
     spc_block_str = species_block(mech_str, comments=True)
     return dict(parser.parseString(spc_block_str).asList())
 

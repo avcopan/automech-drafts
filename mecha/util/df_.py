@@ -1,7 +1,7 @@
 """DataFrame utilities
 """
 
-from typing import Dict, Tuple, Union
+from typing import Dict, Optional, Tuple, Union
 
 import pandas
 
@@ -11,6 +11,30 @@ Key_ = Union[Key, Keys]
 Value = object
 Values = Tuple[object, ...]
 Value_ = Union[Value, Values]
+
+
+def from_csv(path: str) -> pandas.DataFrame:
+    """Read a dataframe from a CSV file
+
+    :param path: The path to the CSV file
+    :return: The dataframe
+    """
+    try:
+        df = pandas.read_csv(path)
+    except pandas.errors.ParserError:
+        df = pandas.read_csv(path, quotechar="'")
+    return df
+
+
+def to_csv(df: pandas.DataFrame, path: Optional[str]):
+    """Write a dataframe to a CSV file
+
+    If `path` is `None`, this function does nothing
+
+    :param path: The path to the CSV file
+    """
+    if path is not None:
+        df.to_csv(path, index=False)
 
 
 def lookup_dict(df: pandas.DataFrame, in_: Key_, out_: Key_) -> Dict[Value_, Value_]:

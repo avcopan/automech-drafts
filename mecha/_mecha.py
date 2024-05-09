@@ -8,6 +8,7 @@ import pandas
 from tqdm.auto import tqdm
 
 from mecha import data, schema
+from mecha.io import chemkin
 from mecha.schema import Reactions, Species
 from mecha.util import df_
 
@@ -15,18 +16,21 @@ tqdm.pandas()
 
 
 def display_reactions(
-    rxn_df: pandas.DataFrame,
-    spc_df: pandas.DataFrame,
+    inp: Union[pandas.DataFrame, str],
+    spc_inp: Union[pandas.DataFrame, str],
     keys: Tuple[str, ...] = (Reactions.eq,),
     stereo: bool = True,
 ):
     """Display the reactions in a mechanism
 
-    :param rxn_df: The reactions dataframe
-    :param spc_df: The species dataframe
+    :param inp: A reactions table, as a CSV file path or dataframe
+    :param spc_inp: A species table, as a CSV file path or dataframe
     :param keys: Keys of extra columns to print
     :param stereo: Display with stereochemistry?
     """
+    rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
+    spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+
     rxn_df = schema.validate_reactions(rxn_df)
     spc_df = schema.validate_species(spc_df)
 
@@ -58,14 +62,14 @@ def classify_reactions(
 ) -> Tuple[pandas.DataFrame, pandas.DataFrame]:
     """Classify the reactions in a mechanism
 
-    :param inp: A dataframe or CSV filepath with reaction data
-    :param spc_inp: A dataframe or CSV filepath with species data
+    :param inp: A reactions table, as a CSV file path or dataframe
+    :param spc_inp: A species table, as a CSV file path or dataframe
     :param out: Optionally, write the reaction data output to this file path
     :param err_out: Optionally, write the error data output to this file path
     :return: A dataframe of classified reactions, and a dataframe of error cases
     """
-    rxn_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
-    spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+    rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
+    spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
 
     rxn_df = schema.validate_reactions(rxn_df)
     spc_df = schema.validate_species(spc_df)
@@ -97,12 +101,9 @@ def classify_reactions(
     err_df = expand_duplicate_reactions(err_df)
 
     rxn_df = schema.validate_reactions(rxn_df)
-    if out is not None:
-        rxn_df.to_csv(out, index=False)
-
     err_df = schema.validate_reactions(err_df)
-    if out is not None:
-        err_df.to_csv(err_out, index=False)
+    df_.to_csv(rxn_df, out)
+    df_.to_csv(err_df, err_out)
 
     return rxn_df, err_df
 
@@ -114,12 +115,12 @@ def expand_species_stereo(
 ) -> pandas.DataFrame:
     """Stereoexpand a list of species
 
-    :param inp: A dataframe or CSV filepath with species data
+    :param inp: A species table, as a CSV file path or dataframe
     :param out: Optionally, write the species data output to this file path
     :param enant: Distinguish between enantiomers?, defaults to True
     :return: The stereo-expanded species dataframe
     """
-    spc_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
+    spc_df = df_.from_csv(inp) if isinstance(inp, str) else inp
 
     def expand_amchi_(chi):
         return automol.amchi.expand_stereo(chi, enant=enant)
@@ -136,8 +137,7 @@ def expand_species_stereo(
     spc_df[Species.name] = spc_df.apply(name_, axis=1)
 
     spc_df = schema.validate_species(spc_df)
-    if out is not None:
-        spc_df.to_csv(out, index=False)
+    df_.to_csv(spc_df, out)
 
     return spc_df
 
@@ -153,15 +153,15 @@ def expand_reaction_stereo(
 
     Requires that the reactions have been classified and the species have been expanded
 
-    :param inp: A dataframe or CSV filepath with reaction data
+    :param inp: A reactions table, as a CSV file path or dataframe
     :param spc_inp: A dataframe or CSV filepath with stereoexpanded species data
     :param out: Optionally, write the reaction data output to this file path
     :param err_out: Optionally, write the error data output to this file path
     :param enant: Distinguish between enantiomers?, defaults to True
     :return: A dataframe of stereoexpanded reactions, and a dataframe of error cases
     """
-    rxn_df = pandas.read_csv(inp) if isinstance(inp, str) else inp
-    spc_df = pandas.read_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+    rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
+    spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
 
     if not enant:
         raise NotImplementedError("Reduced expansion not yet implemented")
@@ -206,12 +206,9 @@ def expand_reaction_stereo(
     rxn_df = rxn_df.explode([Reactions.eq, Reactions.obj])
 
     rxn_df = schema.validate_reactions(rxn_df)
-    if out is not None:
-        rxn_df.to_csv(out, index=False)
-
     err_df = schema.validate_reactions(err_df)
-    if out is not None:
-        err_df.to_csv(err_out, index=False)
+    df_.to_csv(rxn_df, out)
+    df_.to_csv(err_df, err_out)
 
     return rxn_df, err_df
 
@@ -223,10 +220,10 @@ def expand_stereo(
     err_out: Optional[str] = None,
     spc_out: Optional[str] = None,
     enant: bool = True,
-) -> Tuple[pandas.DataFrame, pandas.DataFrame]:
+) -> Tuple[pandas.DataFrame, pandas.DataFrame, pandas.DataFrame]:
     """Stereoexpand a mechanism (both species and reactions)
 
-    :param inp: A dataframe or CSV filepath with reaction data
+    :param inp: A reactions table, as a CSV file path or dataframe
     :param spc_inp: A dataframe or CSV filepath with stereoexpanded species data
     :param out: Optionally, write the reaction data output to this file path
     :param err_out: Optionally, write the error data output to this file path
@@ -239,6 +236,34 @@ def expand_stereo(
         inp, spc_inp, out=out, err_out=err_out, enant=enant
     )
     return rxn_df, spc_df, err_df
+
+
+# Conversions to/from mechanalyzer formats
+def from_mechanalyzer(
+    inp: str,
+    spc_inp: Union[pandas.DataFrame, str],
+    out: Optional[str] = None,
+    spc_out: Optional[str] = None,
+) -> Tuple[pandas.DataFrame, pandas.DataFrame]:
+    """Import from mechanalyzer format
+
+    :param inp: A CHEMKIN mechanism, as a file path or string
+    :param spc_inp: A mechanalyzer-style species table, as a dataframe or CSV file path
+    :param out: Optionally, write the reaction data output to this file path
+    :param spc_out: Optionally, write the species data output to this file path
+    :return: Dataframes for the reactions and species
+    """
+    rxn_df = chemkin.read.reactions(inp)
+    spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+    spc_df = spc_df.rename(columns={"inchi": Species.chi, "smiles": Species.smi})
+
+    rxn_df = schema.validate_reactions(rxn_df)
+    spc_df = schema.validate_species(spc_df)
+
+    df_.to_csv(rxn_df, out)
+    df_.to_csv(spc_df, spc_out)
+
+    return rxn_df, spc_df
 
 
 def to_mechanalyzer(

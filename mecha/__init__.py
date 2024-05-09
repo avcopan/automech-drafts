@@ -7,8 +7,9 @@ from mecha._mecha import (
     combine_duplicate_reactions,
     display_reactions,
     expand_duplicate_reactions,
-    expand_species_stereo,
     expand_reaction_stereo,
+    expand_species_stereo,
+    from_mechanalyzer,
     to_mechanalyzer,
 )
 
@@ -20,7 +21,8 @@ __all__ = [
     "combine_duplicate_reactions",
     "display_reactions",
     "expand_duplicate_reactions",
-    "expand_species_stereo",
     "expand_reaction_stereo",
+    "expand_species_stereo",
+    "from_mechanalyzer",
     "to_mechanalyzer",
 ]

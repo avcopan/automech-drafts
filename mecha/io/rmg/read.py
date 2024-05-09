@@ -2,7 +2,7 @@
 """
 
 import os
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import automol
 import pandas
@@ -13,6 +13,7 @@ from tqdm.auto import tqdm
 
 from mecha import schema
 from mecha.data.reac import SPECIES_NAME
+from mecha.util import df_
 
 MULTIPLICITY = pp.CaselessLiteral("multiplicity") + ppc.integer("mult")
 SPECIES_ENTRY = (
@@ -21,7 +22,7 @@ SPECIES_ENTRY = (
 SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 
-def species(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
+def species(inp: str, out: Optional[str] = None) -> pandas.DataFrame:
     """Extract species information as a dataframe from an RMG species dictionary
 
     :param inp: An RMG species dictionary, as a file path or string
@@ -55,7 +56,6 @@ def species(inp: str, out: Optional[str] = None) -> Dict[str, Any]:
     )
 
     spc_df = schema.validate_species(spc_df)
-    if out is not None:
-        spc_df.to_csv(out, index=False)
+    df_.to_csv(spc_df, out)
 
     return spc_df
