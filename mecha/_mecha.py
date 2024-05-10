@@ -1,6 +1,7 @@
 """Primary mechanism processing routines
 """
 
+import itertools
 import os
 from typing import Optional, Tuple, Union
 
@@ -19,8 +20,13 @@ tqdm.pandas()
 def display(
     inp: Union[pandas.DataFrame, str],
     spc_inp: Union[pandas.DataFrame, str],
-    keys: Tuple[str, ...] = (Reactions.eq,),
     stereo: bool = True,
+    exclude: tuple = (
+        {"H": None},
+        {"O": 1, "H": None},
+        {"O": 2, "H": None},
+        {"C": 1, "H": None},
+    ),
     out: str = "example.html",
 ):
     """Display a mechanism as a reaction network
@@ -29,6 +35,7 @@ def display(
     :param spc_inp: A species table, as a CSV file path or dataframe
     :param keys: Keys of extra columns to print
     :param stereo: Display with stereochemistry?
+    :param exclude: A list of formulas to exclude; Use `None` for wildcard value
     :param out: The HTML file to write to
     """
     from IPython import display as ipd
@@ -38,7 +45,17 @@ def display(
     spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
 
     rxn_df = schema.validate_reactions(rxn_df)
-    spc_df = schema.validate_species(spc_df)
+    spc_df = schema.validate_species(spc_df, smi=True)
+
+    # Handle excluded species
+    def _is_excluded(chi: str):
+        fml = automol.amchi.formula(chi)
+        if any(automol.form.match(fml, f) for f in exclude):
+            return True
+        return False
+
+    spc_df["excluded"] = spc_df[Species.chi].progress_apply(_is_excluded)
+    excl_names = list(spc_df[spc_df["excluded"]][Species.name])
 
     image_dir = "images"
     if not os.path.isdir(image_dir):
@@ -47,7 +64,7 @@ def display(
     def _create_image(chi):
         gra = automol.amchi.graph(chi, stereo=stereo)
         chk = automol.amchi.amchi_key(chi)
-        svg_str = automol.graph.svg_string(gra, image_size=50)
+        svg_str = automol.graph.svg_string(gra, image_size=100)
 
         path = os.path.join(image_dir, f"{chk}.svg")
         with open(path, mode="w") as file:
@@ -57,14 +74,25 @@ def display(
 
     spc_df["image_path"] = spc_df[Species.chi].progress_apply(_create_image)
 
-    net = Network(notebook=True)
+    net = Network(directed=True, notebook=True)
 
     def _add_node(row: pandas.Series):
+        name = row[Species.name]
+        smi = row[Species.smi]
         path = row["image_path"]
-        net.add_node(row.name, shape="image", image=path)
+        if name not in excl_names:
+            net.add_node(name, shape="image", image=path, title=smi)
+
+    def _add_edge(row: pandas.Series):
+        eq = row[Reactions.eq]
+        rnames, pnames, _ = data.reac.read_chemkin_equation(eq)
+        for rname, pname in itertools.product(rnames, pnames):
+            if rname not in excl_names and pname not in excl_names:
+                net.add_edge(rname, pname, title=eq)
 
     spc_df.progress_apply(_add_node, axis=1)
-    ipd.display(net.show("example.html"))
+    rxn_df.progress_apply(_add_edge, axis=1)
+    ipd.display(net.show(out))
 
 
 def display_reactions(
